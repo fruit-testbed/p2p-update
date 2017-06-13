@@ -5,7 +5,7 @@ class wordpress::conf {
   $db_name = '[NAME]'
   $db_user = '[USERNAME]'
   $db_user_password = '[DB_PASSWORD]'
-  $db_host = '[IPv4 ADDRESS]'
+  $db_host = '[IP ADDRESS]'
 
   #Don't change any of these
 

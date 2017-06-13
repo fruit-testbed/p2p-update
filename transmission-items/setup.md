@@ -1,4 +1,4 @@
-## Transmission Setup Guide
+# Transmission Setup Guide
 
 Transmission is the bitTorrent client used to share and receive updates in this project.
 

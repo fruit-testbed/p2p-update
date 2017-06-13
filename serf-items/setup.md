@@ -1,4 +1,4 @@
-## Serf Setup Guide
+# Serf Setup Guide
 
 Serf is the management tool used to distribute commands through a swarm in this project.
 
@@ -47,7 +47,7 @@ Agents in a swarm can trigger events using `$./serf event [name] [parameters]`, 
 
 ## Encryption
 
-To enable encrypted communication within a swarm, add the key-value pair `"encrypt_key": "[key]"` to **serf.conf**. `[key]` is generated using `$serf keygen`.
+To enable encrypted communication within a swarm, add the key-value pair `"encrypt_key": "[key]"` to **serf.conf**. `[key]` is generated using `$./serf keygen`.
 
 All members within a cluster must have the same encryption key to be able to communicate. This provides a layer of security to prevent unauthorised parties joining the swarm, but also has the additional benefit of preventing nodes joining the wrong swarm by accident.
 
@@ -57,4 +57,4 @@ Key management commands can be run from any active node within the swarm:
    * `./serf keys -remove=[key]` removes the specified key
    * `./serf keys -list` lists all installed keys
 
-Thse commands will apply changes to all nodes currently participating in the swarm.
+These commands will apply changes to all nodes currently participating in the swarm.
