@@ -1,17 +1,19 @@
 # Puppet Setup Guide
 
-Puppet is the configuration management tool used in this project. This setup guide explains how to set up a basic Wordpress application, but will change to more project-specific modifications in the future.
+Puppet is the configuration management tool used in this project. This setup guide explains how to set up a basic Wordpress application based on a [guide from DigitalOcean](https://www.digitalocean.com/community/tutorials/how-to-create-a-puppet-module-to-automate-wordpress-installation-on-ubuntu-14-04), but will change to more project-specific modifications in the future.
 
 ## What's in this repo?
 
-This repo contains the following files:
+This repo contains the following files and directories:
    * **install-wp.pp**
-   * **manifests**
+   * **/do-wordpress/manifests**
       * **conf.pp**
       * **db.pp**
       * **init.pp**
       * **web.pp**
       * **wp.pp**
+   * **/do-wordpress/templates**
+      * **wp-config.php.erb**
 
 **install.pp** is a single class used to apply the changes set by the new class on the system (in this case, the class 'wordpress').
 
@@ -30,4 +32,22 @@ This repo contains the following files:
 
 **wp.pp** copies contents of the Wordpress installation to `/var/www/`, where Apache configures its server files. It also creates the file `wp-config.php`.
 
+**wp-config.php.erb** is a template which generates information about the MySQL database the generated Wordpress app will use.
+
 ## Setting up Wordpress using Puppet
+
+Install Puppet using `$sudo apt-get install puppet`, then install PuppetLabs Apache and MySQL modules with `$sudo puppet module install puppetlabs-apache` and `$sudo puppet module install puppetlabs-mysql`. Use the command `$sudo puppet module list` to check these have been installed successfully.
+
+Navigate to the `puppet-items` directory. Build the module with `$sudo puppet module build do-wordpress` - this will create a tar.gz file in `puppet-items/do-wordpress/pkg` which can be shared and used for installation.
+
+Install the new module using `$sudo puppet install ~/p2p-update/puppet-items/do-wordpress/pkg/do-wordpress-0.1.0.tar.gz`.
+
+(To uninstall the module, simply use `$sudo puppet module uninstall do-wordpress`.)
+
+Apply the manifests given by using `$sudo puppet apply install-wp.pp`. The installation process will take a few minutes and will end with the line `Finished catalog run in [x] seconds` if successful.
+
+Visit `http://[IP]` - this should display a default Wordpress page.
+
+## Generating a new module
+
+To generate a new module, use the command `$puppet module generate [name-of-module] --skip-interview`. This will create a directory named `[name-of-module]` containing the file `metadata.json`. Omit the `--skip-interview` flag to enter a series of interactive command prompts which will be used to populate this file.
