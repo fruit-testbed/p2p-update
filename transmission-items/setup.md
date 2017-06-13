@@ -14,7 +14,9 @@ This repo contains the following files:
    * Path for accessing UI (`"rpc-url": "/[URL]/"`)
    * Client username (`"rpc-username": "[USERNAME]"`)
 `"rpc-whitelist"` already has localhost and typical address space behind most NATs defined, but further IP address ranges may need to be added (eg. on university networks).
-These settings can be managed through a UI by visiting '[IP]/[URL]:9091`, but most management of Transmission in this project will be done through altering this file instead (ie. headless setup).
+
+These settings can be managed through a UI by visiting `[IP]/[URL]:9091`, but most management of Transmission in this project will be done through altering this file instead (ie. headless setup).
+
 **_NOTE:_** Make sure transmission-daemon is not active using `sudo service transmission-daemon stop` or changes to **settings.json** will be instantly overwritten.
 
 **lizard.jpg** is a small image used as test data.
@@ -22,9 +24,9 @@ These settings can be managed through a UI by visiting '[IP]/[URL]:9091`, but mo
 **lizard.torrent** is the torrent file for **lizard.jpg**. Like all torrent files in this project, this does not have any tracker URLs - it is designed to be distributed peer-to-peer without having to rely on a central server.
 
 ## Setting up Transmission
-To install transmission, use `sudo apt-get install transmission`. THis should install transmission-daemon, transmission-cli, and transmission-common.
+To install transmission, use `$sudo apt-get install transmission`. This should install transmission-daemon, transmission-cli, and transmission-common.
 
-Make sure `tranmission-daemon` is inactive by running `sudo service transmission-daemon stop` before making any changes.
+Make sure `tranmission-daemon` is inactive by running `$sudo service transmission-daemon stop` before making any changes.
 
 Edit the settings listed above in **settings.json**, then start the `transmission-daemon` service using `$sudo service transmission-daemon start`. 
 
