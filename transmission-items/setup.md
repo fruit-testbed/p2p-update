@@ -15,7 +15,7 @@ This repo contains the following files:
    * Client username (`"rpc-username": "[USERNAME]"`)
 `"rpc-whitelist"` already has localhost and typical address space behind most NATs defined, but further IP address ranges may need to be added (eg. on university networks).
 
-These settings can be managed through a UI by visiting `[IP]:9091/[URL/web/`, but most management of Transmission in this project will be done through altering this file instead (ie. headless setup).
+These settings can be managed through a UI by visiting `[IP]:9091/[URL]/web/`, but most management of Transmission in this project will be done through altering this file instead (ie. headless setup).
 
 **_NOTE:_** Make sure transmission-daemon is not active using `sudo service transmission-daemon stop` or changes to **settings.json** will be instantly overwritten.
 
