@@ -1,6 +1,8 @@
-## Transmission setup guide
+## Transmission Setup Guide
 
 Transmission is the bitTorrent client used to share and receive updates in this project.
+
+## What's in this repo?
 
 This repo contains the following files:
 * **settings.json**
@@ -17,7 +19,7 @@ This repo contains the following files:
 
 These settings can be managed through a UI by visiting `[IP]:9091/[URL]/web/`, but most management of Transmission in this project will be done through altering this file instead (ie. headless setup).
 
-**_NOTE:_** Make sure transmission-daemon is not active using `sudo service transmission-daemon stop` or changes to **settings.json** will be instantly overwritten.
+**_NOTE:_** Make sure transmission-daemon is not active using `sudo service transmission-daemon stop` to avoid changes to **settings.json** being instantly overwritten.
 
 **lizard.jpg** is a small image used as test data.
 
