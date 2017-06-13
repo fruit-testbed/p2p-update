@@ -6,6 +6,7 @@ Puppet is the configuration management tool used in this project. This setup gui
 
 This repo contains the following files and directories:
    * **install-wp.pp**
+   * **/do-wordpress/metadata.json**
    * **/do-wordpress/manifests**
       * **conf.pp**
       * **db.pp**
@@ -16,6 +17,8 @@ This repo contains the following files and directories:
       * **wp-config.php.erb**
 
 **install.pp** is a single class used to apply the changes set by the new class on the system (in this case, the class 'wordpress').
+
+**metadata.json** contains metadata and dependency information about the module.
 
 **conf.pp** is the main configuration file for setting variables which the rest of the manifest files will use. This file requires the user to set the following information:
    * `$root_password = '[PASSWORD]'`
@@ -53,3 +56,5 @@ Visit `http://[IP]` - this should display a default Wordpress page.
 To generate a new module, use the command `$puppet module generate [name-of-module] --skip-interview`. This will create a directory named `[name-of-module]` containing the file `metadata.json`.
 
 Omit the `--skip-interview` flag to enter a series of interactive command prompts which will be used to populate this file.
+
+**_NOTE_**:`"name": "puppetlabs-stdlib"` may need to be replaced with `"name": "puppetlabs/stdlib"` in **metadata.json** due to a bug in Puppet (ver 3.7.2).
