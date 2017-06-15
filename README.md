@@ -10,7 +10,7 @@ Peer to Peer Update project
 
 **.torrent** files can be sent as a user event payload to other nodes using Serf. This is done using the following command:
 
-`./serf event update "$\`cat [FILE].torrent\`"`.
+``./serf event update "$`cat [FILE].torrent`"``.
 
 These payloads are currently stored in `~/received-torrent.torrent`.
 
