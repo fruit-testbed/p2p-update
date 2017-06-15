@@ -12,6 +12,13 @@ Peer to Peer Update project
 
 ``./serf event update "$`cat [FILE].torrent`"``.
 
-These payloads are currently stored in `~/received-torrent.torrent`.
+These payloads are currently stored in **~/received-torrent.torrent**.
 
 Note that Serf user events have a 512 byte limit. Torrent files of just over 200 bytes can be reliably transmitted - further work is being done to establish the exact limit on this, and to hopefully increase this limit.
+
+## Managing new torrent files
+
+**agent.py** is a management script to automate the process of torrenting and applying new update files for each node within the swarm. To run this script, use:
+`$sudo python agent.py`
+
+Currently **agent.py** writes the received data to a torrent file in the required transmission directory, then adds this new torrent file to the transmission daemon. It will eventually be linked to Serf to actively listen for update events, check the version of the new torrent, and apply updates once the full files have finished downloading.
