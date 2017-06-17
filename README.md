@@ -12,17 +12,30 @@ Peer to Peer Update project
 
 ``./serf event update "$`cat [FILE].torrent`"``.
 
+Users should, in most cases, avoid using this and use **submitfile.py** script described below - this handles torrent creation and download management for all nodes.
+
 These payloads are currently stored in **~/received-torrent.torrent**.
 
 Note that Serf user events have a 512 byte limit. Torrent files of just over 200 bytes can be reliably transmitted - further work is being done to establish the exact limit on this, and to hopefully increase this limit.
 
-## Managing new torrent files
+## Submitting a file
 
-**agent.py** is a management script to automate the process of torrenting and applying new update files for each node within the swarm. To run this script, use:
-`$sudo python agent.py [FILE]`
+**submitfile.py** allows a user to submit a file to be downloaded by other nodes in the swarm. This script copies the file to the transmission downloads directory, creates a torrent file and sends the data as a payload for the Serf 'update' event.
 
-Currently **agent.py** writes the received data to a torrent file based on the torrent file's creation date in the required transmission directory, then adds this new torrent file to the transmission daemon if it's the latest version. This version checking system works well for detecting outdated `.torrent` files which have been submitted to the agent, but it does not catch base files which have been submitted (eg. `update.pp`) due to the script automatically creating a torrent file when it detects a non-torrent file as an argument - these will automatically register as the newest update available.
+**update.sh** writes a timestamp and event descriptor (`update`) to **events.log**, which will trigger torrent management and version checking in **agent.py**.
 
-This script will eventually be linked to Serf to actively listen for update events and apply updates once the full files have finished downloading. Improvements also should be made to the version checking system.
+## Automated management script
 
-**_NOTE_**: lines 72 and 75 contain calls to `os.system` which require the user to enter the username and password information for their transmission client(s).
+**agent.py** is an active listening management script to automate the process of torrenting and applying new update files for each node within the swarm. To run this script, use the following command in a separate terminal instance:
+`$sudo python agent.py`
+
+Currently **agent.py** does the following:
+    * Writes received torrent file data to **~/receivedtorrent.torrent**
+    * Creates a torrent file based on sent torrent creation date to the correct transmission directory
+    * Checks other torrent files in this directory to see if this is the newest torrent file available
+    * Adds new torrent to transmission-daemon if and only if this is the case
+    * Copies original file to transmission folder to allow seeding to take place
+
+This script will eventually also monitor downloads and apply the downloaded updates to the system.
+
+**_NOTE_**: lines 77 and 80 contain calls to `os.system` which require the user to enter the username and password information for their transmission client(s).
