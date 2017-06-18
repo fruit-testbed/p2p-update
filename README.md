@@ -30,7 +30,8 @@ Note that Serf user events have a 512 byte limit. Torrent files of just over 200
 `$sudo python agent.py`
 
 Currently **agent.py** does the following:
-    * Writes received torrent file data to **~/receivedtorrent.torrent**
+
+    * Writes received torrent file data to ~/receivedtorrent.torrent
     * Creates a torrent file based on sent torrent creation date to the correct transmission directory
     * Checks other torrent files in this directory to see if this is the newest torrent file available
     * Adds new torrent to transmission-daemon if and only if this is the case
