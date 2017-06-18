@@ -12,7 +12,7 @@ filename = filename[-1]
 if filedetect[1] == "torrent":
     print "Warning: download will only commence if source file for submitted torrent is in directory /var/lib/transmission-daemon/downloads/"
     #Broadcast specified torrent file as a serf event
-    os.system('"`cat %s`"' % sys.argv[1])
+    os.system('serf event update "`cat %s`"' % sys.argv[1])
 #If it's not, create a torrent file first, then trigger Serf event
 else:
     print "Copying %s to /var/transmission-daemon/downloads/ ..." % filename

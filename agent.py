@@ -15,8 +15,8 @@ while True:
     #eventcheck should only be '' and != latestevent only in the case of dataloss from events.log
     if (eventcheck != latestevent) and (eventcheck != ''):
         latestevent = eventcheck
-        #typecheck[0] is a timestamp
-        #typecheck[1] is the event type
+        #eventcheck[0] is a timestamp
+        #eventcheck[1] is the event type
         typecheck = latestevent.split("\n")
         #routine for Serf 'update' event
         if typecheck[1] == "update":
