@@ -10,7 +10,7 @@ Peer to Peer Update project
 
 **.torrent** files can be sent as a user event payload to other nodes using Serf. This is done using the following command:
 
-``serf event update "$`cat [FILE].torrent`"``.
+``$ serf event update "$`cat [FILE].torrent`"``.
 
 Users should, in most cases, avoid using this and use **submitfile.py** script described below - this handles torrent creation and download management for all nodes.
 
@@ -30,13 +30,12 @@ Note that Serf user events have a 512 byte limit. Torrent files of just over 200
 `$sudo python agent.py`
 
 Currently **agent.py** does the following:
-
     * Writes received torrent file data to **~/receivedtorrent.torrent**
     * Creates a torrent file based on sent torrent creation date to the correct transmission directory
     * Checks other torrent files in this directory to see if this is the newest torrent file available
     * Adds new torrent to transmission-daemon if and only if this is the case
     * Copies original file to transmission folder to allow seeding to take place
+    * Monitors torrents for completed downloads
+    * Applies update manifests and installs modules as soon as they have finished downloading
 
-This script will eventually also monitor downloads and apply the downloaded updates to the system.
-
-**_NOTE_**: lines 77 and 80 contain calls to `os.system` which require the user to enter the username and password information for their transmission client(s).
+**_NOTE_**: lines 78, 81 and 86 contain calls to `os.system` which require the user to enter the username and password information for their transmission client(s).
