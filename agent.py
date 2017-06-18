@@ -5,6 +5,7 @@ import subprocess
 
 #Detect the most recent Serf event before initiating loop (timestamp and type)
 latestevent = subprocess.check_output("tail -2 events.log", shell=True)
+torrentcomplete = []
 
 #Operate on a constant loop
 while True:
@@ -46,7 +47,7 @@ while True:
             creationdate = torrentdata[datestart:dateend]
 
             #Remove base file extension
-            #filename = torrentdata[start:end].split(".")
+            basefilename = torrentdata[start:end]
             #Create file with timestamp extension
             filename = creationdate + ".torrent"
 
@@ -79,3 +80,35 @@ while True:
             time.sleep(5)
             os.system("transmission-remote -n 'USERNAME:PASSWORD' -l")
             print os.system("ls /var/lib/transmission-daemon/downloads")
+
+
+    #Download monitoring
+    progress = subprocess.check_output("transmission-remote -n 'USERNAME:PASSWORD' -l", shell=True)
+    #Create list of items which are downloading and their status
+    progressitems = progress.split("\n")
+    for i in range(len(progressitems)):
+        #Ignore lines which are not torrent info
+        if "ID" and "Sum" not in progressitems[i]:
+        #Torrent ID is chars 0,1,2,3 of string at most
+            id = progressitems[i][0:4]
+        #If download is newly complete (ie. id not already in torrentcomplete), mark as complete and decide what to do based on file extension
+            if ("100%" in progressitems[i]) and (id not in torrentcomplete):
+                torrentcomplete.append(id)
+                basefilerev = ""
+                #Reconstruct basefile name from progressitems[i]
+                #Start from reverse of line
+                for j in range(len(progressitems[i])-1, -1, -1):
+                    if progressitems[i][j] != " ":
+                        basefilerev = basefilerev + progressitems[i][j]
+                    #If whitespace has been reached, full basefile name has been obtained
+                    else:
+                        break
+                #Reverse string so filename is correct
+                basefile = basefilerev[::-1]
+                print "Download of %s complete" % basefile
+                if ".pp" in basefile:
+                    print "Applying puppet manifest..."
+                    os.system("sudo puppet apply /var/lib/transmission-daemon/downloads/%s" % basefile)
+                if ".tar" in basefile:
+                    print "Installing puppet module..."
+                    os.system("sudo puppet module install /var/lib/transmission-daemon/downloads/%s" % basefile)
