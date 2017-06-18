@@ -39,4 +39,4 @@ Currently **agent.py** does the following:
     * Monitors torrents for completed downloads
     * Applies update manifests and installs modules as soon as they have finished downloading
 
-**_NOTE_**: lines 78, 81 and 86 contain calls to `os.system` which require the user to enter the username and password information for their transmission client(s).
+**_NOTE_**: lines 79, 84 and 93 contain calls to `os.system` which require the user to enter the username and password information for their transmission client(s).

@@ -75,15 +75,24 @@ while True:
 
             #If received update is newest available, add new torrent to transmission daemon
             if newest == filename:
-                os.system("transmission-remote -n 'USERNAME:PASSWORD' -a /var/lib/transmission-daemon/downloads/%s" % filename)
+                try:
+                    os.system("transmission-remote -n 'USERNAME:PASSWORD' -a /var/lib/transmission-daemon/downloads/%s" % filename)
+                except:
+                    pass
             #Sleep to allow time for added torrent to register in list
             time.sleep(5)
-            os.system("transmission-remote -n 'USERNAME:PASSWORD' -l")
+            try:
+                os.system("transmission-remote -n 'USERNAME:PASSWORD' -l")
+            except:
+                pass
             print os.system("ls /var/lib/transmission-daemon/downloads")
 
 
     #Download monitoring
-    progress = subprocess.check_output("transmission-remote -n 'USERNAME:PASSWORD' -l", shell=True)
+    try:
+         progress = subprocess.check_output("transmission-remote -n 'USERNAME:PASSWORD' -l", shell=True)
+    except:
+         progress = " "
     #Create list of items which are downloading and their status
     progressitems = progress.split("\n")
     for i in range(len(progressitems)):
