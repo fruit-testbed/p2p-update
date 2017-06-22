@@ -71,19 +71,19 @@ sudo apt-get install puppet -y
 echo "Puppet install complete"
 
 #Obtain agent.py, submitfile.py and Serf scripts
-wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/master/agent.py
+wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/agent.py
 echo "agent.py downloaded"
 sudo chmod +x agent.py
-wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/master/submitfile.py
+wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/submitfile.py
 echo "submitfile.py downloaded"
 sudo chmod +x submitfile.py
-wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/master/serf-items/deploy.sh
+wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/serf-items/deploy.sh
 echo "deploy.sh downloaded"
 sudo chmod +x deploy.sh
-wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/master/serf-items/slack.sh
+wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/serf-items/slack.sh
 echo "slack.sh downloaded"
 sudo chmod +x slack.sh
-wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/master/serf-items/update.sh
+wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/serf-items/update.sh
 echo "update.sh"
 sudo chmod +x update.sh
 
