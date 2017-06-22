@@ -50,17 +50,17 @@ sudo apt-get install transmission-daemon -y
 
 #Stop transmission-daemon and edit settings.json
 sudo service transmission-daemon stop
-sudo cat /etc/transmission-daemon/settings.json | sed -i '9s/.*/    "bind-address-ipv4": "'"$addr"'",/' /etc/transmission-daemon/settings.json
+sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '9s/.*/    "bind-address-ipv4": "'"$addr"'",/' /etc/transmission-daemon/settings.json
 echo "bind address changed"
-sudo cat /etc/transmission-daemon/settings.json | sed -i '25s/.*/    "lpd-enabled": true,/' /etc/transmission-daemon/settings.json
+sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '25s/.*/    "lpd-enabled": true,/' /etc/transmission-daemon/settings.json
 echo "lpd enabled"
-sudo cat /etc/transmission-daemon/settings.json | sed -i '53s/.*/    "rpc-whitelist": "127.0.0.1,192.168.\*.\*",/' /etc/transmission-daemon/settings.json
+sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '53s/.*/    "rpc-whitelist": "127.0.0.1,192.168.\*.\*",/' /etc/transmission-daemon/settings.json
 echo "rpc-whitelist changed"
-sudo cat /etc/transmission-daemon/settings.json | sed -i '49s/.*/    "rpc-password": "NEWPASSWORD",/' /etc/transmission-daemon/settings.json
+sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '49s/.*/    "rpc-password": "NEWPASSWORD",/' /etc/transmission-daemon/settings.json
 echo "rpc-password changed"
-sudo cat /etc/transmission-daemon/settings.json | sed -i '52s/.*/    "rpc-username": "NEWUSERNAME",/' /etc/transmission-daemon/settings.json
+sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '52s/.*/    "rpc-username": "NEWUSERNAME",/' /etc/transmission-daemon/settings.json
 echo "rpc-username changed"
-sudo cat /etc/transmission-daemon/settings.json | sed -i '66s/.*/    "umask": 2,/' /etc/transmission-daemon/settings.json
+sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '66s/.*/    "umask": 2,/' /etc/transmission-daemon/settings.json
 echo "umask changed"
 #Start transmission-daemon
 sudo service transmission-daemon start
