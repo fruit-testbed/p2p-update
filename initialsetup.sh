@@ -2,16 +2,28 @@
 echo -e "raspberry\n[NEWPASSWORD]\n[NEWPASSWORD]" | passwd pi
 
 #Set up ssh and reboot if not done already
-if [ -e /boot/ssh ]
+sudo service ssh status | grep running
+if [ $? -eq 0 ]
 then
     echo "ssh already enabled"
 else
+    echo "ssh not enabled - setting up and rebooting..."
     sudo touch /boot/ssh
     sudo reboot
 fi
 
+#Set system clock
+#Locally accessible server should be placed here
+#Default servers supplied with file don't seem to work
+sudo service ntp stop
+sudo cat /etc/ntp.conf | sudo sed -i '21s/.*/server [ADDRESS HERE]/' /etc/ntp.conf
+sudo ntpd -gq
+sudo service ntp start
+
 #Update apt-get
 sudo apt-get update -y
+#Cater for the emacs-inclined
+sudo apt-get install emacs -y
 
 #Obtain Serf zip and unzip
 #CAUTION: link may change, correct as of 3-Jul-2017
