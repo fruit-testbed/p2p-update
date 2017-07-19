@@ -2,15 +2,35 @@ import os
 import sys
 import time
 import subprocess
+import torrentformat
 
-#Detect the most recent Serf event before initiating loop (timestamp and type)
-latestevent = subprocess.check_output("tail -2 events.log", shell=True)
-torrentcomplete = []
+########## FUNCTION DEFINITIONS ###########
 
-#Operate on a constant loop
-while True:
+#Prepare lists on startup
+#Return latestevent, torrentcomplete, pubkeylist
+def setup():
+    #Detect the most recent Serf event before initiating loop (timestamp and type)
+    latestevent = subprocess.check_output("tail -2 events.log", shell=True)
+    torrentcomplete = []
+    pubkeylist = []
+
+    #Populate list of public keys from authorised update nodes
+    try:
+        pubkeylist = os.listdir("receivedkeys")
+    except:
+        pass
+    print pubkeylist
+
+    try:
+       os.system("sudo touch /home/pi/events.log")
+    except:
+       pass
+    return latestevent, torrentcomplete, pubkeylist
+
+#Returns type of last event received through serf and timestamp
+def eventcheck(logfile, latestevent):
     #Check the last 2 lines of the event log to see which Serf event has been received most recently
-    eventcheck = subprocess.check_output("tail -2 events.log", shell=True)
+    eventcheck = subprocess.check_output("tail -2 %s" % logfile, shell=True)
     #ie. if a new event has been received
     #eventcheck should only be '' and != latestevent only in the case of dataloss from events.log
     if (eventcheck != latestevent) and (eventcheck != ''):
@@ -20,77 +40,99 @@ while True:
         typecheck = latestevent.split("\n")
         #routine for Serf 'update' event
         if typecheck[1] == "update":
-            print "Update torrent file received"
-            #Retrieve torrent file data sent through Serf
-            recvtorrent = open("receivedtorrent.torrent", "r")
-            torrentdata = recvtorrent.read()
-            print torrentdata
+            return "update", latestevent
 
-            #Find original filename in torrent file metadata
-            #Check to see if filename length is 1 or 2 digits
-            #(eg. "name9:..." or "name10:...")
-            start = (torrentdata.find("name")) + 5
-            print "start: %d" % start
-            #If char 5 is ":", filename length is under 10
-            #End index is start + number before ":"
-            if (torrentdata[start] == ":"):
-                start += 1
-                end = start + (int(torrentdata[start-2]))
-            #Else, filename length is double digits
-            else:
-                start += 2
-                end = start + (int(torrentdata[(start-3):(start-1)]))
+#Process the raw torrent data received through serf for an update event
+#Returns md5serf, filename, basefilename
+#(ie. [md5 hash of torrent file given from serf], [filename of new torrent], [name of file torrent will download])
+def processtorrent():
+    #Retrieve torrent file data sent through Serf
+    recvtorrent = open("receivedtorrent.torrent", "r")
+    #Retrieve original unicode from base64-encoded section received through serf
+    torrentdata = torrentformat.decodetorrent("receivedtorrent.torrent")
+    #Separate MD5 hash from data sent over serf
+    md5output = torrentformat.removemd5(torrentdata)
+    md5serf = md5output[0]
+    torrentdata = md5output[1] 
 
-            #Find creation date of torrent file (eg. "13:creation datei1497661746e")
-            datestart = (torrentdata.find("creation date")) + 14
-            dateend = datestart + 10
-            creationdate = torrentdata[datestart:dateend]
+    #Find original filename in torrent file metadata
+    #Check to see if filename length is 1 or 2 digits
+    #(eg. "name9:..." or "name10:...")
+    start = (torrentdata.find("name")) + 5
+    print "start: %d" % start
+    #If char 5 is ":", filename length is under 10
+    #End index is start + number before ":"
+    if (torrentdata[start] == ":"):
+        start += 1
+        end = start + (int(torrentdata[start-2]))
+    #Else, filename length is double digits
+    else:
+        start += 2
+        end = start + (int(torrentdata[(start-3):(start-1)]))
 
-            #Remove base file extension
-            basefilename = torrentdata[start:end]
-            #Create file with timestamp extension
-            filename = creationdate + ".torrent"
+    #Find creation date of torrent file (eg. "13:creation datei1497661746e")
+    datestart = (torrentdata.find("creation date")) + 14
+    dateend = datestart + 10
+    creationdate = torrentdata[datestart:dateend]
 
-            print filename + "\n"
+    #Remove base file extension
+    basefilename = torrentdata[start:end]
+    #Create file with timestamp extension
+    filename = creationdate + ".torrent"
 
-            #Create and write torrent files in transmission directory
-            newtorrent = open("/var/lib/transmission-daemon/downloads/%s" % filename, "w+")
-            newtorrent.write(torrentdata)
+    print filename + "\n"
 
-            #Check this is the most recent torrent file (ie. the newest update)
-            #Prevents outdated uploads being downloaded
-            #This system works for .torrent files being submitted to agent.py, not so well for base files (eg. update.pp)
-            #Need more sophisticated system to check version of base files being submitted - these torrent files are created by this script and will therefore always register as being the most recent updates available
-            torrents = os.listdir("/var/lib/transmission-daemon/downloads")
-            newest = filename
-            for i in range(len(torrents)):
-                #If there is a torrent which is newer, break the loop
-                if torrents[i] > filename:
-                    print "Received update is outdated and will not be downloaded"
-                    break
+    #Create and write torrent files in transmission directory
+    newtorrent = open("/var/lib/transmission-daemon/downloads/%s" % filename, "w+")
+    #Remove trailing newline char
+    newtorrent.write(torrentdata[:-1])
+    #Close files
+    newtorrent.close()
+    recvtorrent.close()
+    return md5serf, filename, basefilename
+    
 
-            #Close files
-            newtorrent.close()
-            recvtorrent.close()
-
-            #If received update is newest available, add new torrent to transmission daemon
-            if newest == filename:
-                try:
-                    os.system("transmission-remote -n 'USERNAME:PASSWORD' -a /var/lib/transmission-daemon/downloads/%s" % filename)
-                except:
-                    pass
-            #Sleep to allow time for added torrent to register in list
-            time.sleep(5)
-            try:
-                os.system("transmission-remote -n 'USERNAME:PASSWORD' -l")
-            except:
-                pass
-            print os.system("ls /var/lib/transmission-daemon/downloads")
+#Check if most recent torrent received is actually newest update
+#Currently based on creation date in torrent file metadata, not trustworthy
+#TODO: Replace with blockchain-like method
+def versioncheck(filename):
+    torrents = os.listdir("/var/lib/transmission-daemon/downloads")
+    newest = filename
+    for i in range(len(torrents)):
+        #Go through torrents to see if any are newer than the most recently received one
+        if (".torrent" in torrents[i]) and (torrents[i] > filename):
+            newest = torrents[i]
+    #Will return true only if no other torrent file is newer
+    if newest == filename:
+        print "Update is newest available and will be downloaded"
+        return True
+    else:
+        print "Received update is outdated and will not be downloaded"
+        return False
 
 
-    #Download monitoring
+#Add a torrent to transmission-remote
+#Nothing returned
+def addtorrent(filename):
+    #Try adding torrent file to transmission-remote
     try:
-         progress = subprocess.check_output("transmission-remote -n 'USERNAME:PASSWORD' -l", shell=True)
+        os.system("transmission-remote -n '[USERNAME]:[PASSWORD]' -a /var/lib/transmission-daemon/downloads/%s" % filename)
+    except:
+        print "Error adding %s to transmission-remote" % filename
+    #Sleep to allow time for added torrent to register in list
+    time.sleep(5)
+    try:
+        os.system("transmission-remote -n '[USERNAME]:[PASSWORD]' -l")
+    except:
+        print "Error listing transmission downloads"
+    print os.system("ls /var/lib/transmission-daemon/downloads")
+    
+
+#Monitor active torrents for completed downloads
+#Returns basefile if complete download detected, "none" if no new downloads complete
+def downloadmonitor():
+    try:
+         progress = subprocess.check_output("transmission-remote -n '[USERNAME]:[PASSWORD]' -l", shell=True)
     except:
          progress = " "
     #Create list of items which are downloading and their status
@@ -115,9 +157,91 @@ while True:
                 #Reverse string so filename is correct
                 basefile = basefilerev[::-1]
                 print "Download of %s complete" % basefile
-                if ".pp" in basefile:
-                    print "Applying puppet manifest..."
-                    os.system("sudo puppet apply /var/lib/transmission-daemon/downloads/%s" % basefile)
-                if ".tar" in basefile:
-                    print "Installing puppet module..."
-                    os.system("sudo puppet module install /var/lib/transmission-daemon/downloads/%s" % basefile)
+                return basefile
+    return "none"
+
+
+#Action to take when specific filetypes have finished downloading
+#Nothing returned
+#Potentially recursive if directory was downloaded
+def processfile(basefile):
+    if ".pp" in basefile:
+        print "Applying puppet manifest..."
+        os.system("sudo puppet apply /var/lib/transmission-daemon/downloads/%s" % basefile)
+    if ".tar" in basefile:
+        print "Installing puppet module..."
+        os.system("sudo puppet module install /var/lib/transmission-daemon/downloads/%s" % basefile)
+    #ie. torrented file was a directory
+    if ".zip" in basefile:
+        print "Directory received, unzipping..."
+        #/home/pi path is hardcoded because ~/ unzips to root/[file]
+        #Will try to fix this
+        os.system("sudo unzip -o -d /home/pi /var/lib/transmission-daemon/downloads/%s" % basefile)
+    if ".pem" in basefile:
+        print "Public key received, copying to home directory..."
+        try:
+            os.system("sudo mkdir /home/pi/receivedkeys")
+        except:
+            pass
+        os.system("sudo cp /var/lib/transmission-daemon/downloads/%s /home/pi/receivedkeys" % basefile)
+        #Add new key to list of public keys
+        pubkeylist.append(basefile)
+    #ie. torrented file was a directory or extensionless file
+    if "." not in basefile:
+        filepath = "/var/lib/transmission-daemon/downloads/"
+        #filelist = list containing update file, hash and signature
+        filelist = os.listdir("%s%s" % (filepath, basefile))
+        #Determine the full name of the update file
+        for i in range(len(filelist)):
+            if filelist[i] != "hash" and filelist[i] != "signature":
+                updatefile = filelist[i]
+                processfile(updatefile)
+
+
+########## ACTIVE SECTION OF SCRIPT ###########
+
+#Return latestevent, torrentcomplete, pubkeylist
+output = setup()
+latestevent = output[0]
+torrentcomplete = output[1]
+pubkeylist = output[2]
+currenttimestamp = ""
+lasttimestamp = ""
+
+#Operate on a constant loop
+while True:
+    #Detect the most recent event received through serf
+    #[event-type, timestamp]
+    try:
+        event = eventcheck("events.log", latestevent)
+        eventtype = event[0]
+        currenttimestamp = event[1]
+    except:
+        pass
+    #Only trigger event responses when new event has been received
+    if currenttimestamp != lasttimestamp:
+        lasttimestamp = currenttimestamp
+        #Update file received
+        if eventtype == "update":
+            print "Update torrent file received"
+            #Format received torrent data and use it to create new torrent file
+            output = processtorrent()
+            #MD5 hash of torrent file (filename) given by serf payload
+            md5serf = output[0]
+            #Torrent file created from receivedtorrent.torrent after formatting
+            filename = output[1]
+            #Name of file which the above torrent file will download
+            basefilename = output[2]
+            
+            #Check that update is newest one available
+            newest = versioncheck(filename)
+            
+            #Add the new torrent to transmission-remote if it's the latest one available
+            if newest == True:
+                addtorrent(filename)
+
+
+    #Download monitoring
+    basefile = downloadmonitor()
+    if basefile != "none":
+        processfile(basefile)
