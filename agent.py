@@ -197,6 +197,17 @@ def processfile(basefile):
                 updatefile = filelist[i]
                 processfile(updatefile)
 
+#CHeck if the MD5 hash sent over serf for the original torrent file matches the reconstructed local copy
+def md5check(filename, md5serf):
+    md5local = subprocess.check_output("sudo md5sum /var/lib/transmission-daemon/downloads/%s" % filename, shell=True)
+    #Only need MD5 hash, first 32 chars returned by command - ignore filename
+    md5local = md5local[:32]
+    if md5local == md5serf:
+        print "MD5 hash verified"
+        return True
+    else:
+        print "MD5 mismatch - potential forgery!"
+        return False
 
 ########## ACTIVE SECTION OF SCRIPT ###########
 
@@ -235,9 +246,9 @@ while True:
             
             #Check that update is newest one available
             newest = versioncheck(filename)
-            
+            md5match = md5check(filename, md5serf)
             #Add the new torrent to transmission-remote if it's the latest one available
-            if newest == True:
+            if (newest == True) and (md5match == True):
                 addtorrent(filename)
 
 
@@ -245,3 +256,6 @@ while True:
     basefile = downloadmonitor()
     if basefile != "none":
         processfile(basefile)
+        
+
+           
