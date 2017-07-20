@@ -104,7 +104,7 @@ def versioncheck(filename):
             newest = torrents[i]
     #Will return true only if no other torrent file is newer
     if newest == filename:
-        print "Update is newest available and will be downloaded"
+        print "Update is newest available"
         return True
     else:
         print "Received update is outdated and will not be downloaded"
@@ -203,7 +203,7 @@ def md5check(filename, md5serf):
     #Only need MD5 hash, first 32 chars returned by command - ignore filename
     md5local = md5local[:32]
     if md5local == md5serf:
-        print "MD5 hash verified"
+        print "MD5 hash verified - update is trusted and will be downloaded"
         return True
     else:
         print "MD5 mismatch - potential forgery!"
