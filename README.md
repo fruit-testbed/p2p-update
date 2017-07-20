@@ -58,10 +58,10 @@ Currently **agent.py** does the following:
 ## Torrent formatting
 
 **torrentformat.py** has four functions:
-*`encodetorrent(torrent)`: encodes the `pieces` section of torrent file metadata using base64 to prevent corruption of binary data in transit (null chars being removed when sent over Serf, backslashes occasionally interpreted as escape chars, etc.)
-*`decodetorrent(torrent)`: decodes the `pieces` section back into binary data so the reconstructed torrent file is valid
-*`appendmd5(string, torrentfile)`: takes the MD5 hash of torrentfile, then appends it to the start of the string containing the data to be sent over Serf as a payload for an update event
-*`removemd5(string)`: separates the received Serf payload data into two sections: MD5 hash and torrent metadata
+* `encodetorrent(torrent)`: encodes the `pieces` section of torrent file metadata using base64 to prevent corruption of binary data in transit (null chars being removed when sent over Serf, backslashes occasionally interpreted as escape chars, etc.)
+* `decodetorrent(torrent)`: decodes the `pieces` section back into binary data so the reconstructed torrent file is valid
+* `appendmd5(string, torrentfile)`: takes the MD5 hash of torrentfile, then appends it to the start of the string containing the data to be sent over Serf as a payload for an update event
+* `removemd5(string)`: separates the received Serf payload data into two sections: MD5 hash and torrent metadata
     
 This module is used in both **submitfile.py** and **agent.py**.
 
