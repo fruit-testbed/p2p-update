@@ -42,15 +42,15 @@ Serf user events have a 512 byte limit. Torrent files of just over 200 bytes can
 `$ sudo python agent.py`
 
 Currently **agent.py** does the following:
-    * Writes received MD5 hash and torrent file metadata to ~/receivedtorrent.torrent
-    * Separates MD5 hash and raw torrent metadata
-    * Decodes base64-encoded sections of the torrent metadata using **torrentformat.py**
-    * Creates a torrent file based on sent torrent creation date to the correct transmission directory
-    * Checks other torrent files in this directory to see if this is the newest torrent file available
-    * Checks the MD5 hash received from Serf against the MD5 hash of the locally reconstructed torrent file
-    * Adds new torrent to transmission-daemon if and only if the torrent file is the newest available and has a matching MD5 hash
-    * Monitors torrents for completed downloads
-    * Applies update manifests and installs modules as soon as they have finished downloading
+* Writes received MD5 hash and torrent file metadata to ~/receivedtorrent.torrent
+* Separates MD5 hash and raw torrent metadata
+* Decodes base64-encoded sections of the torrent metadata using **torrentformat.py**
+* Creates a torrent file based on sent torrent creation date to the correct transmission directory
+* Checks other torrent files in this directory to see if this is the newest torrent file available
+* Checks the MD5 hash received from Serf against the MD5 hash of the locally reconstructed torrent file
+* Adds new torrent to transmission-daemon if and only if the torrent file is the newest available and has a matching MD5 hash
+* Monitors torrents for completed downloads
+* Applies update manifests and installs modules as soon as they have finished downloading
 
 **_NOTE_**: lines 119, 125 and 135 contain calls to `os.system` which require the user to enter the username and password information for their transmission client(s). Future work on this project includes allowing **agent.py** to use a config file for these values.
 
@@ -58,10 +58,10 @@ Currently **agent.py** does the following:
 ## Torrent formatting
 
 **torrentformat.py** has four functions:
-    *`encodetorrent(torrent)`: encodes the `pieces` section of torrent file metadata using base64 to prevent corruption of binary data in transit (null chars being removed when sent over Serf, backslashes occasionally interpreted as escape chars, etc.)
-    *`decodetorrent(torrent)`: decodes the `pieces` section back into binary data so the reconstructed torrent file is valid
-    *`appendmd5(string, torrentfile)`: takes the MD5 hash of torrentfile, then appends it to the start of the string containing the data to be sent over Serf as a payload for an update event
-    *`removemd5(string)`: separates the received Serf payload data into two sections: MD5 hash and torrent metadata
+*`encodetorrent(torrent)`: encodes the `pieces` section of torrent file metadata using base64 to prevent corruption of binary data in transit (null chars being removed when sent over Serf, backslashes occasionally interpreted as escape chars, etc.)
+*`decodetorrent(torrent)`: decodes the `pieces` section back into binary data so the reconstructed torrent file is valid
+*`appendmd5(string, torrentfile)`: takes the MD5 hash of torrentfile, then appends it to the start of the string containing the data to be sent over Serf as a payload for an update event
+*`removemd5(string)`: separates the received Serf payload data into two sections: MD5 hash and torrent metadata
     
 This module is used in both **submitfile.py** and **agent.py**.
 
