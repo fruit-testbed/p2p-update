@@ -1,6 +1,8 @@
 # p2p-update
 Peer to Peer Update project
+
 Section 1: Update system
+
 Section 2: NAT traversal
 
 # Update system
