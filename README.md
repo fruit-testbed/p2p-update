@@ -1,5 +1,9 @@
 # p2p-update
 Peer to Peer Update project
+Section 1: Update system
+Section 2: NAT traversal
+
+# Update system
 
 ## Setup guides
 
@@ -66,3 +70,20 @@ Currently **agent.py** does the following:
 This module is used in both **submitfile.py** and **agent.py**.
 
 
+# NAT traversal
+
+This is in beta stages and will be refined over the next few weeks.
+
+**NAT-traversal/** contains four files:
+* **endsession.py**: ends an established peer-to-peer session between two machines. Usage:
+`python endsession.py (IP-addr-used-by-peer) (port-used-by-peer) (your-external-IP) (your-external-port)`
+* **stunclientlite.py**: opens a UDP link to a proxy server, which can then be used to send or receive session invites from other peers. Usage:
+`python stunclientlite.py (server-address) (server-port) "(Message to be sent to peer)"`
+* **stunserverlite.py**: listens for messages from clients and distributes address and port information to enable peer-to-peer sessions. Usage:
+`python stunserverlite.py (address) (port)`
+* **talkto.py**: Sends a request to start a peer-to-peer session with another peer. Usage:
+`python endession.py (IP-used-by-proxy-server) (port-used-by-proxy-server) (IP-addr-used-by-peer) (port-used-by-peer)`
+
+Note that `IP-addr-used-by-peer` refers to the IPv4 address of the NAT device if the peer is behind one of these. `port-used-by-peer`refers to the port opened to UDP traffic through contact with the proxy server - **stunclientlite.py** will print this after the client has made initial contact with the proxy.
+
+Currently only a machine behind Restricted NAT can initiate a session with a machine behind Full-Cone NAT. This is due to Restricted NAT only accepting UDP traffic from IP addresses which it has sent a packet to before - conversely, Full Cone NAT will accept UDP traffic from any address through an open port.
