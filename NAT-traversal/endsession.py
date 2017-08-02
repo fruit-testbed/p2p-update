@@ -2,6 +2,8 @@ import socket
 import sys
 import time
 
+#Usage: python endsession.py (addr-of-peer) (port-used-by-peer) (own-addr)
+
 #Set up socket and return it
 def socketcreate():
     #UDP socket for IPv4
@@ -12,7 +14,7 @@ def socketcreate():
 #Takes addr, port and socket as arguments
 #Doesn't return anything
 def sendmsg(addr, port, s):
-    s.sendto("TerminateSession %s %s" % (sys.argv[3], sys.argv[4]), (addr, port))
+    s.sendto("TerminateSession %s" % sys.argv[3], (addr, port))
 
 ##### ACTIVE SECTION OF SCRIPT #####
 

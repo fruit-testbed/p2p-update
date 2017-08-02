@@ -19,27 +19,28 @@ def addpeer(addr, port, peers):
     print peers
 
 
-def keepalive(addr, port, dictionary, s):
+def keepalive(addr, peers, s):
+    port = peers[addr]
     print "\nMaintaining mapping to %s %d...\n" % (addr, port)
-    s.sendto("KeepAliveProxy peerupdate %s" % dictionary, (addr, port))
     #Send up-to-date dictionary of potential peer candidates
+    s.sendto("KeepAliveProxy peerupdate %s" % peers, (addr, port))
     #s.sendto("PeerCandidates update %s" % str(dictionary.items()), (addr, port))
 
 
-def talkto(addr, port, peers, msg, s):
+def talkto(addr, peers, msg, s):
     #msg format: "TalkTo 2.221.45.10 50120"
     msg = msg.split(" ")
     #msg[1] = address
     #Look for port associated with address in dictionary
     ext_port = peers[msg[1]]
     try:
-        s.sendto("TalkRequest %s %d" % (addr, port), (msg[1], ext_port))
-        print "sent TalkRequest %s %d to %s %d" % (addr, port, msg[1], ext_port)
+        s.sendto("TalkRequest %s" % addr, (msg[1], ext_port))
+        print "sent TalkRequest %s to %s %d" % (addr, msg[1], ext_port)
     except:
         print "Error sending TalkRequest"
     
 
-def respondto(addr, port, peers, msg, s):
+def respondto(addr, peers, msg, s):
     #msg format: "RespondTo 2.166.240.67 44512"
     msg = msg.split(" ")
     #msg[1] = address
@@ -47,8 +48,8 @@ def respondto(addr, port, peers, msg, s):
     ext_port = " "
     ext_port = peers[msg[1]]
     try:
-        s.sendto("TalkResponse %s %d" % (addr, port), (msg[1], ext_port))
-        print "sent TalkResponse %s %d to %s %d" % (addr, port, msg[1], ext_port)
+        s.sendto("TalkResponse %s" % addr, (msg[1], ext_port))
+        print "sent TalkResponse %s to %s %d" % (addr, msg[1], ext_port)
     except:
         print "Error sending TalkResponse"
 
@@ -61,15 +62,15 @@ def serverloop(s, dictionary):
     msg, clientaddr = s.recvfrom(4096)
     #Keep connection alive between client and server
     if "KeepAliveProxy" in msg:
-        keepalive(clientaddr[0], clientaddr[1], dictionary, s)
+        keepalive(clientaddr[0], dictionary, s)
     #Client requesting to talk to another client
     elif "TalkTo" in msg:
         print "Request received from %s %d: %s" % (clientaddr[0], clientaddr[1], msg)
-        talkto(clientaddr[0], clientaddr[1], dictionary, msg, s)
+        talkto(clientaddr[0], dictionary, msg, s)
     #Client responding to a TalkTo request from another client
     elif "RespondTo" in msg:
         print "Request received from %s %d: %s" % (clientaddr[0], clientaddr[1], msg)
-        respondto(clientaddr[0], clientaddr[1], dictionary, msg, s)
+        respondto(clientaddr[0], dictionary, msg, s)
     elif "GetInfo" in msg:
         print "\nReceived message from %s on port %s" % (clientaddr[0], clientaddr[1])
         print "\'%s\'" % msg

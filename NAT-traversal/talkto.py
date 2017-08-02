@@ -2,6 +2,8 @@ import socket
 import sys
 import time
 
+#Usage: python talkto.py (addr-of-proxy) (port-used-by-proxy) (addr-of-peer)
+
 #Set up socket and return it
 def socketcreate():
     #UDP socket for IPv4
@@ -9,14 +11,14 @@ def socketcreate():
     return s
 
 #Main server loop
-#Takes addr, port and socket as arguments
+#Takes public-facing addr (of server?), public-facing port (of server?), addr of peer, socket as arguments
 #Doesn't return anything
-def sendmsg(addr, port, peeraddr, peerport, s):
-    s.sendto("TalkTo %s %s" % (peeraddr, peerport), (addr, port))
+def sendmsg(addr, port, peeraddr, s):
+    s.sendto("TalkTo %s" % peeraddr, (addr, port))
 
 ##### ACTIVE SECTION OF SCRIPT #####
 
 #Set up socket
 s = socketcreate()
 #Send message
-sendmsg(sys.argv[1], int(sys.argv[2]), sys.argv[3], int(sys.argv[4]), s)
+sendmsg(sys.argv[1], int(sys.argv[2]), sys.argv[3], s)

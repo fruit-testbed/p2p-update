@@ -50,7 +50,7 @@ def keepalivepeer(addr, peers, msg, s):
     #msg format: "TalkTo 2.221.45.10 50120"
     msg = msg.split(" ")
     #msg[1] = address of peer
-    #exp_port = port used by peer
+    #ext_port = port used by peer
     ext_port = peers[msg[1]]
     s.sendto("KeepAlivePeer %s ... " % addr, (msg[1], ext_port))
     print "Sent to %s %d" % (msg[1], ext_port)
@@ -63,32 +63,29 @@ def sendresponse(addr, port, peers, msg, s):
     #(ie. (MessageType) (IP-address) (port) ID (ID-number))
     msg = msg.split(" ")
     #msg[1] = address of peer
-    #int(msg[2]) = port number used by peer to server
-#    peers[msg[1]] = int(msg[2])
-#    print peers
-    s.sendto("RespondTo %s %s" % (msg[1], msg[2]), (addr, port))
-    print "Response sent to %s %s" % (addr, msg[2])
+    s.sendto("RespondTo %s" % msg[1], (addr, port))
+    print "Response sent to %s %s" % (addr, port)
 
 #string = string to be sent to peer
-def custommsg(string, addr, port, msg, s, peerlist):
+def sessionstart(addr, msg, peers, s):
     #msg format: "TalkTo 2.221.45.10 50120"
     msg = msg.split(" ")
     #msg[1] = address
-    #int(msg[2]) = port number
-    #Add [address, port] of peer to peerlist
-    #peerlist.append([msg[1], msg[2]])
-    s.sendto("CustomMsg %s %s %s" % (addr, port, string), (msg[1], int(msg[2])))
-    print "Custom message sent to %s %s" % (msg[1], int(msg[2]))
+    #ext_port = port used by peer
+    ext_port = peers[msg[1]]
+    s.sendto("SessionStart %s" % addr, (msg[1], ext_port))
+    print "Custom message sent to %s %s" % (msg[1], ext_port)
 
     
 #string = string to be sent to peer
-def terminatesession(addr, port, msg, s):
+def terminatesession(addr, msg, peers, s):
     #msg format: "TalkTo 2.221.45.10 50120"
     msg = msg.split(" ")
     #msg[1] = address
-    #int(msg[2]) = port number
-    s.sendto("TerminateSession %s %s" % (addr, port), (msg[1], int(msg[2])))
-    print "Terminated session with %s %s" % (msg[1], msg[2])
+    #ext_port = port used by peer
+    ext_port = peers[msg[1]]
+    s.sendto("TerminateSession %s" % addr, (msg[1], ext_port))
+    print "Terminated session with %s %s" % (msg[1], ext_port)
 
 
 ###### ACTIVE SECTION OF SCRIPT #####
@@ -151,29 +148,30 @@ while True:
         proxycontact = False
         sessionlink = True
         #Send custom message to test traversal
-        custommsg(sys.argv[3], natinfo[0], int(natinfo[1]), msg, s, peercandidates)
+        sessionstart(natinfo[0], msg, peercandidates, s)
         
     #Independent session established with peer, set proxycontact to False
     #Stops KeepAlive cycle with proxy server
-    elif "CustomMsg" in msg:        
+    elif "SessionStart" in msg:        
         proxycontact = False
         sessionlink = True
-        #keepalivepeer(msg, s)
         keepalivepeer(natinfo[0], peercandidates, msg, s) 
            
     #Terminate session established with peer, return to keepalive link with proxy server
     elif ("TerminateSession" in msg) and (sessionlink):
-        #Independent session with peer ended, set proxycontact to True
-        #Resumes KeepAlive cycle with proxy server
+        #Independent session with peer ended, end sessionlink and resume proxycontact
         proxycontact = True
         sessionlink = False
-        terminatesession(natinfo[0], natinfo[1], msg, s)
+        terminatesession(natinfo[0], msg, peercandidates, s)
+        #Restart contact with proxy server
+        #Exception due to no dictionary in msg will be caught
         keepaliveproxy(sys.argv[1], int(sys.argv[2]), msg, peercandidates, s)
         
     #Catch excess TerminateSession messages
     elif ("TerminateSession" in msg) and (not sessionlink):
         pass
     
+    #A mysterious message has appeared...
     else:
         print "Unknown message received: %s" % msg
     
