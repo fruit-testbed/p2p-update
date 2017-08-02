@@ -14,7 +14,7 @@ def socketcreate():
 #Takes addr, port and socket as arguments
 #Doesn't return anything
 def sendmsg(addr, port, s):
-    s.sendto("TerminateSession %s" % sys.argv[3], (addr, port))
+    s.sendto("EndSession %s" % sys.argv[3], (addr, port))
 
 ##### ACTIVE SECTION OF SCRIPT #####
 
