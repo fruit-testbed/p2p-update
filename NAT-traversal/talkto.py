@@ -11,7 +11,7 @@ def socketcreate():
     return s
 
 #Main server loop
-#Takes public-facing addr (of server?), public-facing port (of server?), addr of peer, socket as arguments
+#Takes addr of server, port used by server, public-facing addr of peer, socket as arguments
 #Doesn't return anything
 def sendmsg(addr, port, peeraddr, s):
     s.sendto("TalkTo %s" % peeraddr, (addr, port))
