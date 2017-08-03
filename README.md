@@ -1,11 +1,11 @@
 # p2p-update
 Peer to Peer Update project
 
-Section 1: Update system
+**Section 1:** Update system
 
-Section 2: NAT traversal
+**Section 2:** NAT traversal
 
-# Update system
+# Section 1: Update system
 
 ## Setup guides
 
@@ -72,7 +72,7 @@ Currently **agent.py** does the following:
 This module is used in both **submitfile.py** and **agent.py**.
 
 
-# NAT traversal
+# Section 2: NAT traversal
 
 This is in beta stages and will be refined over the next few weeks.
 
@@ -92,4 +92,6 @@ This is in beta stages and will be refined over the next few weeks.
 
 Note that `IP-addr-used-by-peer` refers to the IPv4 address of the NAT device if the peer is behind one of these.
 
-Currently only a machine behind Restricted NAT can initiate a session with a machine behind Full-Cone NAT. This is due to Restricted NAT only accepting UDP traffic from IP addresses which it has sent a packet to before - conversely, Full Cone NAT will accept UDP traffic from any address through an open port.
+Any machine can initiate a peer-to-peer session regardless of the type of NAT obscuring the peer being contacted. This is done by getting each machine to retransmit `TalkTo` messages to mark the addr:port combination as 'familiar' to Restricted NAT - the NAT will then allow future traffic from addr:port.
+
+Currently only a machine behind Restricted NAT can end a session with a machine behind Full-Cone NAT. This is due to Restricted NAT only accepting UDP traffic from IP addresses which it has sent a packet to before - conversely, Full Cone NAT will accept UDP traffic from any address through an open port.
