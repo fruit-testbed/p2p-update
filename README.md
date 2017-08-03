@@ -92,6 +92,6 @@ This is in beta stages and will be refined over the next few weeks.
 
 Note that `IP-addr-used-by-peer` refers to the IPv4 address of the NAT device if the peer is behind one of these.
 
-Any machine can initiate a peer-to-peer session regardless of the type of NAT obscuring the peer being contacted. This is done by getting each machine to retransmit `TalkTo` messages to mark the addr:port combination as 'familiar' to Restricted NAT - the NAT will then allow future traffic from addr:port.
+Any machine can initiate a peer-to-peer session regardless of the type of NAT obscuring the peer being contacted. This is done by getting each machine to retransmit `TalkTo` messages to mark the `addr:port` combination as 'familiar' to Restricted NAT - the NAT will then allow future traffic from `addr:port`.
 
-Currently only a machine behind Restricted NAT can end a session with a machine behind Full-Cone NAT. This is due to Restricted NAT only accepting UDP traffic from IP addresses which it has sent a packet to before - conversely, Full Cone NAT will accept UDP traffic from any address through an open port.
+Currently only a machine behind Restricted NAT can end a session with a machine behind Full-Cone NAT. This is due to Restricted NAT only accepting UDP traffic from `addr:port` combinations which it has sent a packet to before - conversely, Full Cone NAT will accept UDP traffic from any address through an open port.
