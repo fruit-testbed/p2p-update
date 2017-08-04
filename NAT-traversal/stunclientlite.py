@@ -69,14 +69,16 @@ def sendresponse(addr, port, retransmit, peers, msg, s):
     #(ie. (MessageType) (peer-IP-address))
     msg = msg.split(" ")
     #msg[1] = address of peer
-    if retransmit == 0:
+    #Maybe set retransmit < 2 instead?
+    #Two restricted NATs would need to send this message at least twice each
+    if retransmit < 2:
         s.sendto("RespondTo %s" % msg[1], (addr, port))
     #If TalkTo message has not been sent, try sending it
     #Necessary for establishing sessions with peers behind restricted NAT
 #    if retransmit == 0:
         s.sendto("TalkTo %s" % msg[1], (addr, port))
         #Increment flag to mark retransmission of message
-        retransmit = 1
+        retransmit += 1
     print "Response sent to %s %s" % (addr, port)
     return retransmit
     
@@ -93,7 +95,7 @@ def sessionstart(addr, peers, msg, s):
 
 
 #Add a peer to list of current peers in this session
-def addsessionpeer(sessionpeers, retransmit, peerlist, msg):
+def addsessionpeer(sessionpeers, peerlist, msg):
     #msg format: "SessionStart 2.221.45.10"
     #(ie. (MessageType) (peer-IP-address))
     msg = msg.split(" ")
@@ -104,17 +106,25 @@ def addsessionpeer(sessionpeers, retransmit, peerlist, msg):
     sessionpeers[msg[1]] = ext_port
 
     
-def endsession(addr, msg, peers, s):
+def endsession(addr, retransmit, msg, peers, s):
     #msg format: "EndSession 2.221.45.10"
     #(ie. (MessageType) (peer-IP-address))
     msg = msg.split(" ")
-    #msg[1] = address
-    #ext_port = port used by peer
-    ext_port = peers[msg[1]]
-    s.sendto("EndSession %s" % addr, (msg[1], ext_port))
-    #Remove all peers from session dictionary
-    peers.clear()
-    print "Ended session with %s %s" % (msg[1], ext_port)
+    if retransmit < 2:
+        try:
+            #msg[1] = address
+            #ext_port = port used by peer
+            ext_port = peers[msg[1]]
+            s.sendto("EndSession %s" % addr, (msg[1], ext_port))
+            #Remove all peers from session dictionary
+            peers.clear()
+            print "Ended session with %s %s" % (msg[1], ext_port)
+        #Exception thrown when trying to access value from empty dictionary
+        #ie. endsession has already been called for this client
+        except:
+            print "Error accessing session peer info - session already ended"
+        retransmit += 1
+    return retransmit
 
 
 ###### ACTIVE SECTION OF SCRIPT #####
@@ -145,7 +155,9 @@ msgid = 0
 
 #Check if message has been retransmitted
 #1 if yes, 0 if no
-retransmit = 0
+retransmitstart = 0
+
+retransmitend = 0
 
 #Main loop
 while True:
@@ -171,9 +183,10 @@ while True:
         print "Peer contact disabled - KeepAlivePeer message not sent"
         
     #TalkRequest sent from another peer through server
-    #Sent in response to another peer wanting direct communication with this machine
+    #RespondTo sent in response to enable direct peer-to-peer communication with this machine
     elif "TalkRequest" in msg:
-        retransmit = sendresponse(sys.argv[1], int(sys.argv[2]), retransmit, peercandidates, msg, s)
+        retransmitend = 0
+        retransmitstart = sendresponse(sys.argv[1], int(sys.argv[2]), retransmitstart, peercandidates, msg, s)
         
     #TalkResponse sent from another peer through server
     #Start session with peer independent of proxy server
@@ -181,7 +194,7 @@ while True:
         #proxycontact = False
         sessionlink = True
         #Add peer to dictionary of peers in this session
-        addsessionpeer(sessionpeers, retransmit, peercandidates, msg)
+        addsessionpeer(sessionpeers, peercandidates, msg)
         sessionstart(natinfo[0], peercandidates, msg, s)
     
     #Catch excess TalkResponse messages
@@ -194,7 +207,7 @@ while True:
         #proxycontact = False
         sessionlink = True
         #Add peer to dictionary of peers in this session
-        addsessionpeer(sessionpeers, retransmit, peercandidates, msg)
+        addsessionpeer(sessionpeers, peercandidates, msg)
         #Send keepalive signal to peer
         keepalivepeer(natinfo[0], sessionpeers, msg, s) 
            
@@ -203,11 +216,11 @@ while True:
         #Independent session with peer ended, end sessionlink and resume proxycontact
         proxycontact = True
         sessionlink = False
-        endsession(natinfo[0], msg, sessionpeers, s)
+        retransmitend = endsession(natinfo[0], retransmitend, msg, sessionpeers, s)
         #Reset retransmit flag to 0
-        retransmit = 0
+        retransmitstart = 0
         #Restart contact with proxy server
-        #Exception due to no dictionary in msg will be caught
+        #Exception due to no dictionary in msg will be caught in keepaliveproxy call
         keepaliveproxy(sys.argv[1], int(sys.argv[2]), msg, peercandidates, s)
         
     #Catch excess EndSession messages
