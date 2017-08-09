@@ -52,6 +52,12 @@ def respondto(addr, peers, msg, s):
         print "sent TalkResponse %s to %s %d" % (addr, msg[1], ext_port)
     except:
         print "Error sending TalkResponse"
+        
+#Remove peer from dictionary of current peers in contact with proxy server
+def removeclient(peers, msg):
+    msg = msg.split(" ")
+    #Remove peer ceasing contact from dictionary
+    del peers[msg[1]]
 
 
 #Main server loop
@@ -71,6 +77,10 @@ def serverloop(s, dictionary):
     elif "RespondTo" in msg:
         print "Request received from %s %d: %s" % (clientaddr[0], clientaddr[1], msg)
         respondto(clientaddr[0], dictionary, msg, s)
+    #Client sending shutdown notification, remove details from dictionary
+    elif "ClientShutdown" in msg:
+        print msg
+        removeclient(dictionary, msg)
     elif "GetInfo" in msg:
         print "\nReceived message from %s on port %s" % (clientaddr[0], clientaddr[1])
         print "\'%s\'" % msg
@@ -103,6 +113,7 @@ peercandidates = dict()
 
 #Set up sockets
 s = socketcreate(sys.argv[1], int(sys.argv[2]))
+
 #Main server loop
 while True:
     serverloop(s, peercandidates)

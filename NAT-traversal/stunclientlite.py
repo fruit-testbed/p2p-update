@@ -94,7 +94,7 @@ def sessionstart(addr, peers, msg, s):
     print "Custom message sent to %s %s" % (msg[1], ext_port)
 
 
-#Add a peer to list of current peers in this session
+#Add a peer to dictionary of current peers in this session
 def addsessionpeer(sessionpeers, peerlist, msg):
     #msg format: "SessionStart 2.221.45.10"
     #(ie. (MessageType) (peer-IP-address))
@@ -104,27 +104,29 @@ def addsessionpeer(sessionpeers, peerlist, msg):
     ext_port = peerlist[msg[1]]
     #Add peer addr:port (str:int) to dictionary
     sessionpeers[msg[1]] = ext_port
+    
+#Remove peer from dictionary of current peers in this session
+def removesessionpeer(sessionpeers, msg):
+    msg = msg.split(" ")
+    #Remove peer leaving session from dictionary
+    del sessionpeers[msg[1]]
+
+
+#Send message to other peers alerting them that this machine is leaving the session
+def endsession(addr, peers, s):
+    #Send message to other peers in current session
+    peerlist = peers.items()
+    for i in range(len(peerlist)):
+        peeraddr = peerlist[i][0]
+        port = peerlist[i][1]
+        s.sendto("PeerLeave %s" % addr, (peeraddr, port))
+    #Clear sessionpeers dictionary
+    peers.clear()
 
     
-def endsession(addr, retransmit, msg, peers, s):
-    #msg format: "EndSession 2.221.45.10"
-    #(ie. (MessageType) (peer-IP-address))
-    msg = msg.split(" ")
-    if retransmit < 2:
-        try:
-            #msg[1] = address
-            #ext_port = port used by peer
-            ext_port = peers[msg[1]]
-            s.sendto("EndSession %s" % addr, (msg[1], ext_port))
-            #Remove all peers from session dictionary
-            peers.clear()
-            print "Ended session with %s %s" % (msg[1], ext_port)
-        #Exception thrown when trying to access value from empty dictionary
-        #ie. endsession has already been called for this client
-        except:
-            print "Error accessing session peer info - session already ended"
-        retransmit += 1
-    return retransmit
+def talkto(string, addr, port, s):
+    print "Send %s to %s %d" % (string, addr, port)
+    s.sendto(string, (addr, port))
 
 
 ###### ACTIVE SECTION OF SCRIPT #####
@@ -138,7 +140,16 @@ peercandidates = dict()
 #Dictionary of peers linked to in current session
 sessionpeers = dict()
 
+#Set up sockets
+#Socket to receive messages from servers and other clients
 s = createsocket()
+#Socket to receive messages from localhost, port 10000
+localsocket = createsocket()
+#Set socket as non-blocking to avoid script hanging
+localsocket.setblocking(0)
+localsocket.bind(("127.0.0.1", 5044))
+
+#Obtain IP address of NAT and port used between NAT and proxy server
 #Arguments: address of proxy server, port, socket
 natinfo = getnatinfo(sys.argv[1], int(sys.argv[2]), peercandidates, s)
 
@@ -153,15 +164,15 @@ sessionlink = False
 #ID to align correct responses with received messages
 msgid = 0
 
-#Check if message has been retransmitted
-#1 if yes, 0 if no
-retransmitstart = 0
+#Check how many times message has been retransmitted
+retransmit = 0
 
-retransmitend = 0
 
 #Main loop
 while True:
-#    print "Retransmit = %d" % retransmit
+
+    #Check for incoming messages from external sources (ie. non-localhost)
+    
     msg = s.recvfrom(4096)[0]
     print "msg: %s" % msg
     #KeepAlive request/response cycle with server to keep UDP port open on local NAT
@@ -185,8 +196,7 @@ while True:
     #TalkRequest sent from another peer through server
     #RespondTo sent in response to enable direct peer-to-peer communication with this machine
     elif "TalkRequest" in msg:
-        retransmitend = 0
-        retransmitstart = sendresponse(sys.argv[1], int(sys.argv[2]), retransmitstart, peercandidates, msg, s)
+        retransmit = sendresponse(sys.argv[1], int(sys.argv[2]), retransmit, peercandidates, msg, s)
         
     #TalkResponse sent from another peer through server
     #Start session with peer independent of proxy server
@@ -212,16 +222,11 @@ while True:
         keepalivepeer(natinfo[0], sessionpeers, msg, s) 
            
     #End session established with peer, return to keepalive link with proxy server
-    elif ("EndSession" in msg) and (sessionlink):
-        #Independent session with peer ended, end sessionlink and resume proxycontact
-        proxycontact = True
-        sessionlink = False
-        retransmitend = endsession(natinfo[0], retransmitend, msg, sessionpeers, s)
-        #Reset retransmit flag to 0
-        retransmitstart = 0
-        #Restart contact with proxy server
+    elif ("PeerLeave" in msg) and (sessionlink):
+        removesessionpeer(sessionpeers, msg)
         #Exception due to no dictionary in msg will be caught in keepaliveproxy call
-        keepaliveproxy(sys.argv[1], int(sys.argv[2]), msg, peercandidates, s)
+        #keepaliveproxy(sys.argv[1], int(sys.argv[2]), msg, peercandidates, s)
+ 
         
     #Catch excess EndSession messages
     elif ("EndSession" in msg) and (not sessionlink):
@@ -230,8 +235,52 @@ while True:
     #A mysterious message has appeared...
     else:
         print "Unknown message received: %s" % msg
+        
+    #If there are no peers in the current session, reset retransmission count and mark sessionlink as False
+    if len(sessionpeers) == 0:
+        retransmission = 0
+        sessionlink = False
     
-    #Increment message counter
+    # Check for messages from localhost (ie. events to broadcast to proxy server or swarm)
     
-    
-    
+    try:
+        #Retrieve info from socket bound to localhost
+        localmsg = localsocket.recvfrom(4096)[0]
+        print localmsg
+        
+        if "SendTorrent" in localmsg:
+            print "send"
+        
+        #EndSession event: exit swarm and notify peers
+        elif "EndSession" in localmsg:
+            #Independent session with peer ended, end sessionlink and resume proxycontact
+            proxycontact = True
+            sessionlink = False
+            retransmission = 0
+            endsession(natinfo[0], sessionpeers, s)
+                
+        #TalkTo event: send message containing peer addr to proxy server
+        elif "TalkTo" in localmsg:
+            talkto(localmsg, sys.argv[1], int(sys.argv[2]), s)
+        
+        #ExitScript event: call endsession if in contact with peers, then exit script
+        #Similar to EndSession event, but removes self from proxy server's list of peers as well
+        elif "ExitScript" in localmsg:
+            #If peer-to-peer session is active, announce leaving to peers
+            if sessionlink:
+                #Independent session with peer ended, end sessionlink and resume proxycontact
+                proxycontact = True
+                sessionlink = False
+                endsession(natinfo[0], sessionpeers, s)
+                #Send notification of shutdown to proxy server
+                s.sendto("ClientShutdown %s" % natinfo[0], (sys.argv[1], int(sys.argv[2])))
+            #Exit the program
+            print "Exiting client script ..."
+            break
+            #
+            sys.exit()
+            
+        else:
+            print "Unknown localmsg: %s" % localmsg
+    except:
+        pass
