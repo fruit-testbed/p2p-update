@@ -75,7 +75,7 @@ This module is used in both **submitfile.py** and **agent.py**.
 # Section 2: NAT traversal
 
 
-**NAT-traversal** contains four files:
+**NAT-traversal** contains three files:
 
 * **stunclientlite.py**: opens a UDP link to a proxy server, which can then be used to send or receive session invites from other peers. Usage:
 
