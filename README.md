@@ -74,24 +74,24 @@ This module is used in both **submitfile.py** and **agent.py**.
 
 # Section 2: NAT traversal
 
-This is in beta stages and will be refined over the next few weeks.
 
-**NAT-traversal/** contains four files:
-* **endsession.py**: ends an established peer-to-peer session between two machines. Usage:
+**NAT-traversal** contains four files:
 
-`python endsession.py (IP-addr-used-by-peer) (port-used-by-peer) (your-external-IP)`
 * **stunclientlite.py**: opens a UDP link to a proxy server, which can then be used to send or receive session invites from other peers. Usage:
 
-`python stunclientlite.py (proxy-server-address) (proxy-server-port)`
-* **stunserverlite.py**: listens for messages from clients and distributes address and port information to enable peer-to-peer sessions. Usage:
+`$ python stunclientlite.py (proxy-server-address) (proxy-server-port)`
+* **stunserverlite.py**: acts as a proxy server - listens for messages from clients and distributes address and port information to enable peer-to-peer sessions. Usage:
 
-`python stunserverlite.py (address) (port)`
-* **talkto.py**: Sends a request to start a peer-to-peer session with another client. Usage:
+`$ python stunserverlite.py (address) (port)`
+* **eventcreate.py**: sends an event and payload to the client script via a UDP socket bound to `localhost` - these can be sent to other peers or the proxy server through the client script. These are the commands currently understood by this script:
 
-`python talkto.py (IP-used-by-proxy-server) (port-used-by-proxy-server) (IP-addr-used-by-peer)`
+   * `$ python eventcreate.py talkto (IP-addr-used-by-peer)`: contacts proxy server to start the process of establishing a peer-to-peer session with the machine at the given address/behind a NAT with the given address.
 
-Note that `IP-addr-used-by-peer` refers to the IPv4 address of the NAT device if the peer is behind one of these.
+   * `$ python eventcreate.py sendfile (path-to-file)`: currently creates a torrent file from the file given and its MD5 hash. Will broadcast this data to other peers in future commits.
+
+   * `$ python eventcreate.py endsession`: alerts peers in the current peer-to-peer session that this machine is leaving, leaves the session, then resumes contact with proxy server.
+   
+   * `$ python eventcreate.py exit`: as above, but also alerts proxy server of shutdown so it can remove machine's details from its dictionary of potential peers, then exits the program.
 
 Any machine can initiate a peer-to-peer session regardless of the type of NAT obscuring the peer being contacted. This is done by getting each machine to retransmit `TalkTo` messages to mark the `addr:port` combination as 'familiar' to Restricted NAT - the NAT will then allow future traffic from `addr:port`.
 
-Currently only a machine behind Restricted NAT can end a session with a machine behind Full-Cone NAT. This is due to Restricted NAT only accepting UDP traffic from `addr:port` combinations which it has sent a packet to before - conversely, Full Cone NAT will accept UDP traffic from any address through an open port.
