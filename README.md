@@ -75,7 +75,7 @@ This module is used in both **submitfile.py** and **agent.py**.
 # Section 2: NAT traversal
 
 
-**NAT-traversal** contains three files:
+**NAT-traversal** contains four files:
 
 * **stunclientlite.py**: opens a UDP link to a proxy server, which can then be used to send or receive session invites from other peers. Usage:
 
@@ -87,7 +87,7 @@ This module is used in both **submitfile.py** and **agent.py**.
 
    * `$ python eventcreate.py talkto (IP-addr-used-by-peer)`: contacts proxy server to start the process of establishing a peer-to-peer session with the machine at the given address/behind a NAT with the given address.
 
-   * `$ python eventcreate.py sendfile (path-to-file)`: currently creates a torrent file from the file given and its MD5 hash. Will broadcast this data to other peers in future commits.
+   * `$ python eventcreate.py sendfile (path-to-file)`: creates a torrent file from the file or directory given, then appends the MD5 hash of the torrent file to the torrent metadata as part of the event payload. Uses functions from **torrentformat.py**. Will broadcast this data to other peers in future commits.
 
    * `$ python eventcreate.py endsession`: alerts peers in the current peer-to-peer session that this machine is leaving, leaves the session, then resumes contact with proxy server.
    
