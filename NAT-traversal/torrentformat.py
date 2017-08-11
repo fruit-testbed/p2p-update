@@ -33,11 +33,10 @@ def encodetorrent(torrent):
     return string
 
 
-#Argument given should be filepath, not raw torrent data
+#Argument given should be a string (ie. raw torrent data)
 #Decodes base-64 encoded section of torrent file into original unicode
-def decodetorrent(torrent):
-    torrent = open(torrent, "r")
-    string = torrent.read()
+def decodetorrent(string):
+    print string
     #Find the start of the base64 encoded string
     start = (string.find("pieces")) + 6
     num = ""
@@ -49,9 +48,11 @@ def decodetorrent(torrent):
         start += 1
     #':' is not a digit but also not part of unicode data - skip this char
     start += 1
+    print "String start = %s" % string[start]
     #end = end of base64 encoded section in metadata
     end = string.find(":private")
-#    print string[start:end]
+    print "String end = %s" % string[end]
+    print string[start:end]
     #Decode base64-encoded section to retrieve original unicode
     stringdecoded = base64.b64decode(string[start:end])
     #Reconstruct original torrent file
@@ -77,7 +78,7 @@ def appendmd5(string, torrentfile):
 #Returns [md5hash, string]
 def removemd5(string):
 #    md5hash = subprocess.check_output("sudo md5sum %s" % torrentfile, shell=True)
-    md5hashserf = string[:32]
+    md5hash = string[:32]
     string = string[32:]
     return md5hash, string
 

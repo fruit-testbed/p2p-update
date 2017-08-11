@@ -2,7 +2,6 @@ import socket
 import os
 import sys
 import time
-import uuid
 import subprocess
 import torrentformat
 
@@ -121,24 +120,6 @@ def senddirectory(filepath, filewithext, filenoext, fileext, sysarg, s):
         os.system('sudo rm %s.torrent' % filenoext)
 
 
-#Sending public keys
-def sendpubkey(filepath, filewithext, filenoext, fileext, sysarg, s):
-    print "Public key submitted for torrenting"
-    pubkeyid = uuid.uuid4()
-    print "Copying %s to %s%s/ ..." % (pubkeyid, filepath, filenoext)
-    os.system('sudo cp %s %s%s.pem' % (sysarg, filepath, pubkeyid))
-    os.system('sudo transmission-create -o %s.torrent %s%s.pem' % (pubkeyid, filepath, pubkeyid))
-    #Sanitise torrent file unicode to prevent corruption when sent over UDP
-    torrentdata = torrentformat.encodetorrent("%s.torrent" % pubkeyid)
-    #Attach MD5 hash of torrent file to torrentdata
-    #Arguments: string, torrentfile
-    torrentdata = torrentformat.appendmd5(torrentdata, "%s.torrent" % pubkeyid)
-    #Send torrent data to client script through socket bound to localhost
-    sendinput("SendTorrent split %s" % torrentdata, s)
-    #Cleanup local torrent file
-    os.system('sudo rm %s.torrent' % pubkeyid)
-
-
 #Sending any other filetype
 def sendotherfile(filepath, filewithext, filenoext, fileext, sysarg, s):
     print "Copying %s to %s%s/ ..." % (filewithext, filepath, filewithext)
@@ -147,15 +128,21 @@ def sendotherfile(filepath, filewithext, filenoext, fileext, sysarg, s):
     #Create torrent
     print "Creating %s.torrent ..." % filenoext
     os.system('sudo transmission-create -o %s.torrent %s%s' % (filenoext, filepath, filewithext))
+    #Copy torrent to transmission folder
+    #os.system('sudo cp %s.torrent %s' % (filenoext, filepath))
+    #Add torrent to daemon
+    os.system("sudo transmission-remote -n '[USERNAME]:[PASSWORD]' -a %s.torrent" % (filenoext))
+    time.sleep(2)
+    #List torrents in progress
+    os.system("transmission-remote -n '[USERNAME]:[PASSWORD]' -l")
+    print "%s.torrent added to transmission-daemon" % filenoext
     #Sanitise torrent file unicode to prevent corruption when sent over UDP
     torrentdata = torrentformat.encodetorrent("%s.torrent" % filenoext)
     #Attach MD5 hash of torrent file to torrentdata
-    #Arguments: string, torrentfile
+    #Arguments: raw torrent data, torrentfile
     torrentdata = torrentformat.appendmd5(torrentdata, "%s.torrent" % filenoext)
     #Send torrent data to client script through socket bound to localhost
     sendinput("SendTorrent split %s" % torrentdata, s)
-    #Cleanup local torrent file
-    os.system('sudo rm %s.torrent' % filenoext)
 
 
 ###############################################
@@ -190,9 +177,6 @@ if event == "sendfile":
     #Submitted file was directory or extensionless file:
     elif fileinfo[3] == "":
         senddirectory(fileinfo[0], fileinfo[1], fileinfo[2], fileinfo[3], fileinfo[4], s)
-    #Submitted file was a public key  
-    elif fileinfo[3] == "pem":
-        sendpubkey(fileinfo[0], fileinfo[1], fileinfo[2], fileinfo[3], fileinfo[4], s)
     #Submitted file was any other type
     else:
         sendotherfile(fileinfo[0], fileinfo[1], fileinfo[2], fileinfo[3], fileinfo[4], s)  

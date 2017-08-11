@@ -165,7 +165,7 @@ def sendTorrentFile(addr, peers, msg, s):
             peer_port = peerlist[i][1]
             #Outgoing msg format: "SendTorrentFile (own-external-IP-addr) (MD5-hash-and-torrent-file-data)"
             s.sendto("SendTorrentFile %s split %s" % (addr, msg[1]), (peer_addr, peer_port))
-            print "Sent to %s %d" % (peer_addr, peer_port)    
+            print "SendTorrentFile sent to %s %d" % (peer_addr, peer_port)    
         except:
             pass
 
@@ -179,24 +179,34 @@ def processtorrent(msg):
     home = os.environ['HOME']
     #Retrieve MD5 hash and torrent data from payload
     md5hash, torrentdata = torrentformat.removemd5(msg[1])
+    #Decode torrentdata from base64
     hashfile = open("%s/md5hash.txt" % home, "w+")
     torrentfile = open("%s/receivedtorrent.torrent" % home, "w+")
     eventfile = open("%s/events.log" % home, "w+")
     #Write MD5 hash and raw torrent file metadata to files in home directory
     print "Writing MD5 hash to '%s/md5hash.txt'...." % home
     hashfile.write(md5hash)
+    hashfile.close()
     print "Writing torrent data to '%s/receivedtorrent.torrent'...." % home
+    print "Torrentdata = %s" % torrentdata
+    torrentdata = torrentformat.decodetorrent(torrentdata)
     torrentfile.write(torrentdata)
+    torrentfile.close()
     #Write timestamp and event type to ~/events.log to alert agent.py of new torrent file
     print "Writing to events log..."
     timestamp = time.time()
     eventfile.write("%f\ntorrent" % timestamp)
-    #Close files
-    print "Closing files..."
-    hashfile.close()
-    torrentfile.close()
     eventfile.close()
     print "Received torrent file processed successfully."
+    
+    
+def sharepeers(peers, msg, s):
+    msg = msg.split(" ")
+    peer_port = peers[msg[1]]
+    peerlist = peers.items()
+    s.sendto("SharePeers split %s" % str(peerlist), (msg[1], peer_port))
+    print "SharePeers sent to %s %d" % (msg[1], peer_port)
+   
 
 
 
@@ -313,6 +323,9 @@ while True:
         sessionlink = True
         #Add peer to dictionary of peers in this session
         addsessionpeer(sessionpeers, peercandidates, msg)
+        #ie. if there are any peers other than the one just added, share with the client which just joined the session
+        if len(sessionpeers) > 1:
+            sharepeers(sessionpeers, msg, s)
         #Send keepalive signal to peer
         keepalivepeer(natinfo[0], sessionpeers, msg, s) 
            
@@ -332,6 +345,36 @@ while True:
         print "Torrent file received"
         #Separate MD5 hash from torrent data and write components to separate files
         processtorrent(msg)
+        
+    #Received shared list of peers in current session
+    elif "SharePeers" in msg:
+        #incoming msg is just a list of peer addresses and ports
+        print "Shared list of peers received"
+        try:
+            msg = msg.split(" split ")
+            #Convert string representation of list into actual list
+            newpeers = ast.literal_eval(msg[1])
+            for i in range(len(newpeers)):
+                #Only add a new peer to sessionpeers if it's not in the dictionary already
+                #Don't add own address and port details
+                if (newpeers[i][0] not in sessionpeers) and (newpeers[i] != natinfo[0]):
+                    client = newpeers[i][0]
+                    client_port = newpeers[i][1]
+                    sessionpeers[client] = client_port
+                    #Attempt to establish session with new peers
+                    if client not in retransmitcount:
+                        retransmitcount[client] = 0
+                        print "Client %s added to retransmitcount in initial TalkTo call" % client
+                        talkto("TalkTo %s" % client, sys.argv[1], int(sys.argv[2]), retransmitcount[client], s)
+                    #If client is in dictionary and talkto command is being used again, communication has already failed somehow
+                    #Reset client value to 0 and try again
+                    else:
+                        retransmitcount[client] = 0
+                        print "Client %s retransmitcount reset to 0" % client
+                        talktorepeat("TalkTo %s" % client, sys.argv[1], int(sys.argv[2]), retransmitcount[client], s)
+        #Exception thrown when string cannot be literally evaluated as a list                               
+        except:
+            print "Error converting string of shared peers into list"
 
     #A mysterious message has appeared...
     else:

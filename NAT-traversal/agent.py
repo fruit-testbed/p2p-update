@@ -48,10 +48,10 @@ def eventcheck(logfile, latestevent):
 #Returns md5serf, filename, basefilename
 #(ie. [md5 hash of torrent file given from serf], [filename of new torrent], [name of file torrent will download])
 def processtorrent():
-    #Retrieve torrent file data sent through Serf
+    #Retrieve torrent file data sent through update system
     recvtorrent = open("receivedtorrent.torrent", "r")
+    torrentdata = recvtorrent.read()
     #Retrieve original unicode from base64-encoded section received through serf
-    torrentdata = torrentformat.decodetorrent("receivedtorrent.torrent")
     md5externalfile = open("md5hash.txt", "r")
     md5external = md5externalfile.read()
 
@@ -85,7 +85,7 @@ def processtorrent():
     #Create and write torrent files in transmission directory
     newtorrent = open("/var/lib/transmission-daemon/downloads/%s" % filename, "w+")
     #Remove trailing newline char
-    newtorrent.write(torrentdata[:-1])
+    newtorrent.write(torrentdata)
     #Close files
     newtorrent.close()
     recvtorrent.close()
@@ -251,9 +251,9 @@ while True:
             #Check that update is newest one available
             newest = versioncheck(filename)
             md5match = md5check(filename, md5external)
-            #Add the new torrent to transmission-remote if it's the latest one available
-            #if (newest == True) and (md5match == True):
-            addtorrent(filename)
+            #Add the new torrent to transmission-remote if it's the latest one available and MD5 hash is verified
+            if (newest == True) and (md5match == True):
+                addtorrent(filename)
 
 
     #Download monitoring
