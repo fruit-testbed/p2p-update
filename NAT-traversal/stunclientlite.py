@@ -3,14 +3,19 @@ import sys
 import socket
 import time
 import ast
+import io
+import torrentformat
 
+################################
 ##### FUNCTION DEFINITIONS #####
+################################
 
 def createsocket():
     #UDP socket for IPv4
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     return s
 
+#Get external-facing address and port info from stunserverlite
 def getnatinfo(addr, port, peercandidates, s):
     localaddress = s.getsockname()
     s.sendto("GetInfo: My locally detected address is %s on port %s" % (localaddress[0], localaddress[1]), (addr, port))
@@ -57,11 +62,13 @@ def keepalivepeer(addr, peers, msg, s):
     msg = msg.split(" ")
     #msg[1] = address of peer
     #ext_port = port used by peer
-    ext_port = peers[msg[1]]
-    s.sendto("KeepAlivePeer %s ... " % addr, (msg[1], ext_port))
-    print "Sent to %s %d" % (msg[1], ext_port)
-    time.sleep(2)    
-
+    try:
+        ext_port = peers[msg[1]]
+        s.sendto("KeepAlivePeer %s ... " % addr, (msg[1], ext_port))
+        print "Sent to %s %d" % (msg[1], ext_port)
+        time.sleep(2)    
+    except:
+        pass
 
 #Send response to server confirm communication with another client
 def sendresponse(addr, port, retransmit, peers, msg, s):
@@ -91,7 +98,7 @@ def sessionstart(addr, peers, msg, s):
     #ext_port = port used by peer
     ext_port = peers[msg[1]]
     s.sendto("SessionStart %s" % addr, (msg[1], ext_port))
-    print "Custom message sent to %s %s" % (msg[1], ext_port)
+    print "SessionStart sent to %s %s" % (msg[1], ext_port)
 
 
 #Add a peer to dictionary of current peers in this session
@@ -123,16 +130,85 @@ def endsession(addr, peers, s):
     #Clear sessionpeers dictionary
     peers.clear()
 
-    
-def talkto(string, addr, port, s):
-    print "Send %s to %s %d" % (string, addr, port)
-    s.sendto(string, (addr, port))
+
+#Tell proxy server to start establishing peer-to-peer session with another client    
+def talkto(string, addr, port, retransmit, s):
+    #ie. if peer this machine is attempting to contact has never responded, resend TalkTo message to proxt
+    if retransmit < 2:
+        print "Send %s to %s %d" % (string, addr, port)
+        s.sendto(string, (addr, port))
+        
+
+#Establishing contact has already failed for some reason, try to request again
+#Needed to reset retransmit values in retransmitcount dictionary
+def talktorepeat(string, addr, port, retransmit, s):
+    #ie. if peer this machine is attempting to contact has never responded, resend TalkTo message to proxt
+    if retransmit < 2:
+        print "Send Repeat%s to %s %d" % (string, addr, port)
+        s.sendto("Repeat%s" % string, (addr, port))
+        
+
+#Keep the addr/port open to receive messages from other clients
+def sendTorrentFile(addr, peers, msg, s):
+    #incoming localmsg format: "SendTorrentFile (MD5-hash-and-torrent-file-data)"
+    #(ie. (MessageType) (peer-IP-address))
+    msg = msg.split(" split ")
+    #msg[1] = address of peer
+    #ext_port = port used by peer
+    print "Torrentdata: %s" % msg[1]
+    peerlist = peers.items()
+    print peerlist
+    #Send torrentdata to all peers in current session
+    for i in range(len(peerlist)):
+        try:
+            peer_addr = peerlist[i][0]
+            peer_port = peerlist[i][1]
+            #Outgoing msg format: "SendTorrentFile (own-external-IP-addr) (MD5-hash-and-torrent-file-data)"
+            s.sendto("SendTorrentFile %s split %s" % (addr, msg[1]), (peer_addr, peer_port))
+            print "Sent to %s %d" % (peer_addr, peer_port)    
+        except:
+            pass
 
 
+#Torrent file received from peer, process MD5 hash and metadata
+#Update ~/events.log to notify agent.py script a new update script has been received            
+def processtorrent(msg):
+    #Incoming msg format: "SendTorrentFile (IP-addr-of-peer) (MD5-hash-and-torrent-file-data)"
+    msg = msg.split(" split ")
+    print "Processing torrent..."
+    home = os.environ['HOME']
+    #Retrieve MD5 hash and torrent data from payload
+    md5hash, torrentdata = torrentformat.removemd5(msg[1])
+    hashfile = open("%s/md5hash.txt" % home, "w+")
+    torrentfile = open("%s/receivedtorrent.torrent" % home, "w+")
+    eventfile = open("%s/events.log" % home, "w+")
+    #Write MD5 hash and raw torrent file metadata to files in home directory
+    print "Writing MD5 hash to '%s/md5hash.txt'...." % home
+    hashfile.write(md5hash)
+    print "Writing torrent data to '%s/receivedtorrent.torrent'...." % home
+    torrentfile.write(torrentdata)
+    #Write timestamp and event type to ~/events.log to alert agent.py of new torrent file
+    print "Writing to events log..."
+    timestamp = time.time()
+    eventfile.write("%f\ntorrent" % timestamp)
+    #Close files
+    print "Closing files..."
+    hashfile.close()
+    torrentfile.close()
+    eventfile.close()
+    print "Received torrent file processed successfully."
+
+
+
+#####################################
 ###### ACTIVE SECTION OF SCRIPT #####
+#####################################
 
-#List of received messages
-msglist = []
+
+#Dictionary of peers and retransmit counts (key:value = peer-addr:retransmit-count)
+#TalkTo messages should be send at least twice to ensure peers behind restricted NAT can be contacted
+#ie. when the value associated with a key (peer) = 2, TalkTo messages will stop being sent via the proxy server to that peer
+retransmitcount = dict()
 
 #Dictionary of potential peers
 peercandidates = dict()
@@ -145,8 +221,10 @@ sessionpeers = dict()
 s = createsocket()
 #Socket to receive messages from localhost, port 10000
 localsocket = createsocket()
-#Set socket as non-blocking to avoid script hanging
+#Set socket as non-blocking to avoid script hanging when no data to read
 localsocket.setblocking(0)
+#Arbitrary port chosen, no significance to 5044
+#Can be anything as long as it matches destination port used in eventcreate.py script and isn't the same as the localhost socket bound in that script
 localsocket.bind(("127.0.0.1", 5044))
 
 #Obtain IP address of NAT and port used between NAT and proxy server
@@ -189,27 +267,44 @@ while True:
     elif ("KeepAlivePeer" in msg) and (sessionlink):
         keepalivepeer(natinfo[0], sessionpeers, msg, s)
         
-    #Catch received KeepAliveProxy messages when sessionlink not enabled
+    #Catch received KeepAlivePeer messages when sessionlink not enabled
     elif ("KeepAlivePeer" in msg) and (not sessionlink):
         print "Peer contact disabled - KeepAlivePeer message not sent"
-        
+    
+    #RepeatTalkRequest sent from another peer through server
+    #Sent when TalkRequest has already failed to establish contact at least once
+    elif "RepeatTalkRequest" in msg:
+        #Add client in TalkRequest message to retransmitcount if not in already
+        client = msg.split(" ")[1]
+        #if client in retransmitcount:
+        retransmitcount[client] = 0
+        print "Client %s retransmitcount reset to 0" % client
+        retransmitcount[client] = sendresponse(sys.argv[1], int(sys.argv[2]), retransmitcount[client], peercandidates, msg, s)
+        print "retransmit count for %s: %d" % (client, retransmitcount[client])
+    
     #TalkRequest sent from another peer through server
     #RespondTo sent in response to enable direct peer-to-peer communication with this machine
     elif "TalkRequest" in msg:
-        retransmit = sendresponse(sys.argv[1], int(sys.argv[2]), retransmit, peercandidates, msg, s)
+        #Add client in TalkRequest message to retransmitcount if not in already
+        client = msg.split(" ")[1]
+        if client not in retransmitcount:
+            retransmitcount[client] = 0
+            print "Client %s added to retransmitcount" % client
+        retransmitcount[client] = sendresponse(sys.argv[1], int(sys.argv[2]), retransmitcount[client], peercandidates, msg, s)
+        print "retransmit count for %s: %d" % (client, retransmitcount[client])
         
     #TalkResponse sent from another peer through server
-    #Start session with peer independent of proxy server
-    elif "TalkResponse" in msg and (not sessionlink):
-        #proxycontact = False
+    #Start session with peer
+    #elif "TalkResponse" in msg and (not sessionlink):
+    elif "TalkResponse" in msg:
         sessionlink = True
         #Add peer to dictionary of peers in this session
         addsessionpeer(sessionpeers, peercandidates, msg)
         sessionstart(natinfo[0], peercandidates, msg, s)
     
     #Catch excess TalkResponse messages
-    elif "TalkResponse" in msg and (sessionlink):
-        pass
+    #elif "TalkResponse" in msg and (sessionlink):
+        #pass
         
     #Independent session established with peer, set proxycontact to False
     #Stops KeepAlive cycle with proxy server
@@ -221,24 +316,29 @@ while True:
         #Send keepalive signal to peer
         keepalivepeer(natinfo[0], sessionpeers, msg, s) 
            
-    #End session established with peer, return to keepalive link with proxy server
+    #Peer left current session, remove from sessionpeers dictionary and retransmitcount
     elif ("PeerLeave" in msg) and (sessionlink):
         removesessionpeer(sessionpeers, msg)
+        client = msg.split(" ")[1]
+        try:
+            del retransmitcount[client]
+        except:
+            pass
         #Exception due to no dictionary in msg will be caught in keepaliveproxy call
         #keepaliveproxy(sys.argv[1], int(sys.argv[2]), msg, peercandidates, s)
  
-        
-    #Catch excess EndSession messages
-    elif ("EndSession" in msg) and (not sessionlink):
-        pass
-    
+    #Received a torrent file from a peer
+    elif "SendTorrentFile" in msg:
+        print "Torrent file received"
+        #Separate MD5 hash from torrent data and write components to separate files
+        processtorrent(msg)
+
     #A mysterious message has appeared...
     else:
         print "Unknown message received: %s" % msg
         
-    #If there are no peers in the current session, reset retransmission count and mark sessionlink as False
+    #If there are no peers in the current session, mark sessionlink as False
     if len(sessionpeers) == 0:
-        retransmission = 0
         sessionlink = False
     
     # Check for messages from localhost (ie. events to broadcast to proxy server or swarm)
@@ -248,20 +348,32 @@ while True:
         localmsg = localsocket.recvfrom(4096)[0]
         print localmsg
         
+        #SendTorrent event: send torrent file to peers in current session
         if "SendTorrent" in localmsg:
-            print "send"
+            print "Current sessionpeers: %s" % str(sessionpeers)
+            sendTorrentFile(natinfo[0], sessionpeers, localmsg, s)
         
         #EndSession event: exit swarm and notify peers
         elif "EndSession" in localmsg:
             #Independent session with peer ended, end sessionlink and resume proxycontact
             proxycontact = True
             sessionlink = False
-            retransmission = 0
+            #retransmission = 0
             endsession(natinfo[0], sessionpeers, s)
                 
         #TalkTo event: send message containing peer addr to proxy server
         elif "TalkTo" in localmsg:
-            talkto(localmsg, sys.argv[1], int(sys.argv[2]), s)
+            client = localmsg.split(" ")[1]
+            if client not in retransmitcount:
+                retransmitcount[client] = 0
+                print "Client %s added to retransmitcount in initial TalkTo call" % client
+                talkto(localmsg, sys.argv[1], int(sys.argv[2]), retransmitcount[client], s)
+            #If client is in dictionary and talkto command is being used again, communication has already failed somehow
+            #Reset client value to 0 and try again
+            else:
+                retransmitcount[client] = 0
+                print "Client %s retransmitcount reset to 0" % client
+                talktorepeat(localmsg, sys.argv[1], int(sys.argv[2]), retransmitcount[client], s)
         
         #ExitScript event: call endsession if in contact with peers, then exit script
         #Similar to EndSession event, but removes self from proxy server's list of peers as well
@@ -282,5 +394,6 @@ while True:
             
         else:
             print "Unknown localmsg: %s" % localmsg
+    #No localmsg found, skip to next iteration of loop
     except:
         pass

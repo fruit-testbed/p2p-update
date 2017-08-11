@@ -79,5 +79,5 @@ def removemd5(string):
 #    md5hash = subprocess.check_output("sudo md5sum %s" % torrentfile, shell=True)
     md5hashserf = string[:32]
     string = string[32:]
-    return md5hashserf, string
+    return md5hash, string
 

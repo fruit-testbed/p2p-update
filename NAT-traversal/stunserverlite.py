@@ -2,6 +2,11 @@ import socket
 import sys
 import time
 
+################################
+##### FUNCTION DEFINITIONS #####
+################################
+
+
 #Set up socket and return it
 def socketcreate(host, port):
     #UDP socket for IPv4
@@ -38,6 +43,18 @@ def talkto(addr, peers, msg, s):
         print "sent TalkRequest %s to %s %d" % (addr, msg[1], ext_port)
     except:
         print "Error sending TalkRequest"
+        
+def talktorepeat(addr, peers, msg, s):
+    #msg format: "RepeatTalkTo 2.221.45.10 50120"
+    msg = msg.split(" ")
+    #msg[1] = address
+    #Look for port associated with address in dictionary
+    ext_port = peers[msg[1]]
+    try:
+        s.sendto("RepeatTalkRequest %s" % addr, (msg[1], ext_port))
+        print "sent RepeatTalkRequest %s to %s %d" % (addr, msg[1], ext_port)
+    except:
+        print "Error sending RepeatTalkRequest"
     
 
 def respondto(addr, peers, msg, s):
@@ -69,6 +86,10 @@ def serverloop(s, dictionary):
     #Keep connection alive between client and server
     if "KeepAliveProxy" in msg:
         keepalive(clientaddr[0], dictionary, s)
+    #Client reattempting to talk to another client
+    elif "RepeatTalkTo" in msg:
+        print "Repeat Request received from %s %d: %s" % (clientaddr[0], clientaddr[1], msg)
+        talktorepeat(clientaddr[0], dictionary, msg, s)
     #Client requesting to talk to another client
     elif "TalkTo" in msg:
         print "Request received from %s %d: %s" % (clientaddr[0], clientaddr[1], msg)
@@ -99,7 +120,10 @@ def serverloop(s, dictionary):
         pass
 
 
+####################################
 ##### ACTIVE SECTION OF SCRIPT #####
+####################################
+
 
 #Create list for recent connections to send as possible peers
 #peerlist = []

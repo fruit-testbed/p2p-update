@@ -6,7 +6,10 @@ import uuid
 import subprocess
 import torrentformat
 
+################################
 ##### FUNCTION DEFINITIONS #####
+################################
+
 
 def createsocket():
     #UDP socket for IPv4
@@ -17,6 +20,7 @@ def createsocket():
 def sendinput(string, s):
     #Send generated string (i.e event type and payload) to localsocket in stunclientlite.py
     print "Sent message to 127.0.0.1:\n%s" % string
+    #Check stunclient.py script for correct destination port
     s.sendto(string, ("127.0.0.1", 5044))
     
 
@@ -78,7 +82,7 @@ def sendtorrent(filepath, filewithext, filenoext, fileext, sysarg, s):
     #Arguments: string, torrentfile
     torrentdata = torrentformat.appendmd5(torrentdata, "%s.torrent" % fileinfo[2])
     #Send torrent data to client script through socket bound to localhost
-    sendinput("SendTorrent %s" % torrentdata, s)
+    sendinput("SendTorrent split %s" % torrentdata, s)
 
 
 #Sending directories and extensionless files
@@ -112,7 +116,7 @@ def senddirectory(filepath, filewithext, filenoext, fileext, sysarg, s):
         #Arguments: string, torrentfile
         torrentdata = torrentformat.appendmd5(torrentdata, "%s.torrent" % filenoext)
         #Send torrent data to client script through socket bound to localhost
-        sendinput("SendTorrent %s" % torrentdata, s)
+        sendinput("SendTorrent split %s" % torrentdata, s)
         #Cleanup local torrent file
         os.system('sudo rm %s.torrent' % filenoext)
 
@@ -130,7 +134,7 @@ def sendpubkey(filepath, filewithext, filenoext, fileext, sysarg, s):
     #Arguments: string, torrentfile
     torrentdata = torrentformat.appendmd5(torrentdata, "%s.torrent" % pubkeyid)
     #Send torrent data to client script through socket bound to localhost
-    sendinput("SendTorrent %s" % torrentdata, s)
+    sendinput("SendTorrent split %s" % torrentdata, s)
     #Cleanup local torrent file
     os.system('sudo rm %s.torrent' % pubkeyid)
 
@@ -149,15 +153,20 @@ def sendotherfile(filepath, filewithext, filenoext, fileext, sysarg, s):
     #Arguments: string, torrentfile
     torrentdata = torrentformat.appendmd5(torrentdata, "%s.torrent" % filenoext)
     #Send torrent data to client script through socket bound to localhost
-    sendinput("SendTorrent %s" % torrentdata, s)
+    sendinput("SendTorrent split %s" % torrentdata, s)
     #Cleanup local torrent file
     os.system('sudo rm %s.torrent' % filenoext)
 
 
+###############################################
 ########## ACTIVE SECTION OF SCRIPT ###########
+###############################################
+
 
 #Create socket to send torrent file data
 s = createsocket()
+#Arbitrary port chosen, no significance to 11000
+#Change to anything as long as it doesn't match port of bound localhost socket in stunclient.py
 s.bind(("127.0.0.1", 11000))
 
 #Type of event being created (ie. first argument given)
