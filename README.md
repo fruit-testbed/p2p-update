@@ -1,11 +1,11 @@
 # p2p-update
 Peer to Peer Update project
 
-**Section 1:** Update system
+**Section 1:** Update system for LAN
 
-**Section 2:** NAT traversal
+**Section 2:** Update system with NAT traversal
 
-# Section 1: Update system
+# Section 1: Update system for LAN
 
 ## Setup guides
 
@@ -72,10 +72,10 @@ Currently **agent.py** does the following:
 This module is used in both **submitfile.py** and **agent.py**.
 
 
-# Section 2: NAT traversal
+# Section 2: Update system with NAT traversal
 
 
-**NAT-traversal** contains four files:
+**NAT-traversal** contains five files:
 
 * **stunclientlite.py**: opens a UDP link to a proxy server, which can then be used to send or receive session invites from other peers. Usage:
 
@@ -87,11 +87,15 @@ This module is used in both **submitfile.py** and **agent.py**.
 
    * `$ python eventcreate.py talkto (IP-addr-used-by-peer)`: contacts proxy server to start the process of establishing a peer-to-peer session with the machine at the given address/behind a NAT with the given address.
 
-   * `$ python eventcreate.py sendfile (path-to-file)`: creates a torrent file from the file or directory given, then appends the MD5 hash of the torrent file to the torrent metadata as part of the event payload. Uses functions from **torrentformat.py**. Will broadcast this data to other peers in future commits.
+   * `$ python eventcreate.py sendfile (path-to-file)`: creates a torrent file from the file or directory given, then appends the MD5 hash of the torrent file to the torrent metadata as part of the event payload. This payload is then broadcast  Uses a modified version of **torrentformat.py**.
 
    * `$ python eventcreate.py endsession`: alerts peers in the current peer-to-peer session that this machine is leaving, leaves the session, then resumes contact with proxy server.
    
    * `$ python eventcreate.py exit`: as above, but also alerts proxy server of shutdown so it can remove machine's details from its dictionary of potential peers, then exits the program.
+   
+* **agent.py**: modified version of agent script from section 1. Monitors system for received torrent files and checks received MD5 hash in payload against the calculated value of the locally reconstructed torrent file to check that it has not been tampered with or corrupted in transit. Torrent is added to `transmission-daemon` if this check is passed. Usage:
+
+`$ python agent.py`
 
 Any machine can initiate a peer-to-peer session regardless of the type of NAT obscuring the peer being contacted. This is done by getting each machine to retransmit `TalkTo` messages to mark the `addr:port` combination as 'familiar' to Restricted NAT - the NAT will then allow future traffic from `addr:port`.
 
