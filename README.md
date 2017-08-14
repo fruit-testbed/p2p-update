@@ -45,7 +45,7 @@ Serf user events have a 512 byte limit. Torrent files of just over 200 bytes can
 ## Automated management script
 
 **agent.py** is an active listening management script to automate the process of receiving Serf events, adding torrents, and applying new update files for each node within the swarm. To run this script, use the following command:
-`$ sudo python agent.py`
+`$ python agent.py`
 
 Currently **agent.py** does the following:
 * Writes received MD5 hash and torrent file metadata to ~/receivedtorrent.torrent
@@ -74,28 +74,50 @@ This module is used in both **submitfile.py** and **agent.py**.
 
 # Section 2: Update system with NAT traversal
 
+The **NAT-traversal** folder contains all files needed to run a server or client for the update system:
 
-**NAT-traversal** contains five files:
+* **stunclientlite.py**: opens a UDP link to a proxy server, which can then be used to send or receive session invites from other peers. 
+* **stunserverlite.py**: acts as a proxy server - listens for messages from clients and distributes address and port information to enable peer-to-peer sessions. 
+* **eventcreate.py**: sends an event and payload to the client script via a UDP socket bound to `localhost` - these can be sent to other peers or the proxy server through the client script.
+   
+* **agent.py**: modified version of agent script from section 1. Monitors system for received torrent files and checks received MD5 hash in payload against the calculated value of the locally reconstructed torrent file to check that it has not been tampered with or corrupted in transit. Torrent is added to `transmission-remote` if this check is passed.
 
-* **stunclientlite.py**: opens a UDP link to a proxy server, which can then be used to send or receive session invites from other peers. Usage:
 
-`$ python stunclientlite.py (proxy-server-address) (proxy-server-port)`
-* **stunserverlite.py**: acts as a proxy server - listens for messages from clients and distributes address and port information to enable peer-to-peer sessions. Usage:
+**_NOTE:_** **NAT-traversal/agent.py** and **NAT-traversal/torrentformat.py** are modified versions of the scripts used by the LAN-only version of the update system in section 1 - the NAT-traversal version will not work with the originals since those were configured to use Serf.
+
+## Setting up a proxy server
+
+Proxy servers are required for machines to establish direct peer-to-peer contact when one or more participants are hidden behind NAT. **stunserverlite.py** is essentially a lightweight version of a STUN server which returns external IP and port information for clients, and facilitates group peer-to-peer sessions through sharing peer information and making ports accessible through UDP holepunching.
+
+To start a proxy server, use the following command:
 
 `$ python stunserverlite.py (address) (port)`
-* **eventcreate.py**: sends an event and payload to the client script via a UDP socket bound to `localhost` - these can be sent to other peers or the proxy server through the client script. These are the commands currently understood by this script:
+
+Note that the port used must allow both incoming and outgoing UDP traffic.
+
+## Setting up a client
+
+Peer-to-peer clients use the Transmission BitTorrent client for working with torrents. Steps for installing this can be found in this [setup guide](https://github.com/fruit-testbed/p2p-update/blob/master/transmission-items/setup.md "Transmission setup guide").
+
+**agent.py** must be running to process received torrents, however, clients can still establish peer-to-peer sessions without it. This script reconstructs a received `sendTorrentFile` payload from another peer into a valid torrent file and an MD5 hash string - the torrent file will be automatically added to `transmission-remote` ready for immediate downloading only if the MD5 hash received is the same as the hash value calculated for the reconstructed torrent file (ie. both the sender and the receiver assert this file contains the same data). If a completed download is a puppet manifest, it will be automatically applied to the system.
+
+In a separate terminal instance or as a background process, run the script using:
+
+`$ python agent.py`
+
+**stunclientlite.py** is used to establish contact with a proxy server, keeping a UDP port open to allow contact from other clients which are also in contact with the server. The current version prints received and sent messages every few seconds, so it is advisable to run this script in a separate terminal instance or redirect output. Run the client script with:
+
+`$ python stunclientlite.py (proxy-server-address) (proxy-server-port)`
+
+**eventcreate.py** can be used to communicate commands to the client script through a socket bound to `localhost`. These are the commands currently available:
 
    * `$ python eventcreate.py talkto (IP-addr-used-by-peer)`: contacts proxy server to start the process of establishing a peer-to-peer session with the machine at the given address/behind a NAT with the given address.
 
-   * `$ python eventcreate.py sendfile (path-to-file)`: creates a torrent file from the file or directory given, then appends the MD5 hash of the torrent file to the torrent metadata as part of the event payload. This payload is then broadcast  Uses a modified version of **torrentformat.py**.
+   * `$ python eventcreate.py sendfile (path-to-file)`: creates a torrent file from the file or directory given, then appends the MD5 hash of the torrent file to the torrent metadata as part of the event payload. This payload is then broadcast  Uses functions from **torrentformat.py**.
 
    * `$ python eventcreate.py endsession`: alerts peers in the current peer-to-peer session that this machine is leaving, leaves the session, then resumes contact with proxy server.
    
    * `$ python eventcreate.py exit`: as above, but also alerts proxy server of shutdown so it can remove machine's details from its dictionary of potential peers, then exits the program.
-   
-* **agent.py**: modified version of agent script from section 1. Monitors system for received torrent files and checks received MD5 hash in payload against the calculated value of the locally reconstructed torrent file to check that it has not been tampered with or corrupted in transit. Torrent is added to `transmission-daemon` if this check is passed. Usage:
-
-`$ python agent.py`
 
 Any machine can initiate a peer-to-peer session regardless of the type of NAT obscuring the peer being contacted. This is done by getting each machine to retransmit `TalkTo` messages to mark the `addr:port` combination as 'familiar' to Restricted NAT - the NAT will then allow future traffic from `addr:port`.
 
