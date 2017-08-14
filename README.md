@@ -113,7 +113,7 @@ In a separate terminal instance or as a background process, run the script using
 
    * `$ python eventcreate.py talkto (IP-addr-used-by-peer)`: contacts proxy server to start the process of establishing a peer-to-peer session with the machine at the given address/behind a NAT with the given address.
 
-   * `$ python eventcreate.py sendfile (path-to-file)`: creates a torrent file from the file or directory given, then appends the MD5 hash of the torrent file to the torrent metadata as part of the event payload. This payload is then broadcast  Uses functions from **torrentformat.py**.
+   * `$ python eventcreate.py sendfile (path-to-file)`: creates a torrent file from the file or directory given, then appends the MD5 hash of the torrent file to the torrent metadata as part of the event payload. This payload is then broadcast to other peers in the current session. Uses functions from **torrentformat.py** to encode binary data in the torrent file in base64, which prevents data being corrupted when sent over the network.
 
    * `$ python eventcreate.py endsession`: alerts peers in the current peer-to-peer session that this machine is leaving, leaves the session, then resumes contact with proxy server.
    
