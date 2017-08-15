@@ -7,7 +7,7 @@ Peer to Peer Update project
 
 # Section 1: Update system for LAN
 
-## Setup guides
+## 1.1: Setup guides
 
 **initialsetup.py** automates the setup of the components required for the peer-to-peer update system, subject to users supplying authorisation details for the local machine, `transmission-remote` procedure calls, and local server for setting correct system time. This will be made simpler in the near future by allowing a config file as a command line argument for the script.
 
@@ -17,7 +17,7 @@ In-depth guides are available for each component:
 * [Puppet](https://github.com/fruit-testbed/p2p-update/blob/master/puppet-items/setup.md "Puppet setup guide")
 
 
-## Submitting a file
+## 1.2: Submitting a file
 
 **submitfile.py** allows a user to submit a file to be downloaded by other nodes in the swarm.
 
@@ -29,7 +29,7 @@ This script copies the file to the transmission downloads directory, obtains the
 **update.sh** writes the received MD5 hash and torrent file data to **~/receivedtorrent.torrent**. It also writes a timestamp and event descriptor (`update`) to **events.log**, which will trigger torrent management and version checking in **agent.py**.
 
 
-## Sending torrent files over Serf
+## 1.3: Sending torrent files over Serf
 
 Users should, in most cases, avoid sending torrent data directly using Serf and should use **submitfile.py** script described below instead - this script handles torrent creation, formatting and data broadcasting for all nodes.
 
@@ -42,7 +42,7 @@ The payload given by ``"$`cat [FILE].torrent`"`` will be stored in **~/receivedt
 Serf user events have a 512 byte limit. Torrent files of just over 200 bytes can be reliably transmitted - further work is being done to establish the exact limit on this, and hopefully to increase this limit.
 
 
-## Automated management script
+## 1.4: Automated management script
 
 **agent.py** is an active listening management script to automate the process of receiving Serf events, adding torrents, and applying new update files for each node within the swarm. To run this script, use the following command:
 `$ python agent.py`
@@ -61,7 +61,7 @@ Currently **agent.py** does the following:
 **_NOTE_**: lines 119, 125 and 135 contain calls to `os.system` which require the user to enter the username and password information for their transmission client(s). Future work on this project includes allowing **agent.py** to use a config file for these values.
 
 
-## Torrent formatting
+## 1.5: Torrent formatting
 
 **torrentformat.py** has four functions:
 * `encodetorrent(torrent)`: encodes the `pieces` section of torrent file metadata using base64 to prevent corruption of binary data in transit (null chars being removed when sent over Serf, backslashes occasionally interpreted as escape chars, etc.)
@@ -85,7 +85,7 @@ The **NAT-traversal** folder contains all files needed to run a server or client
 
 **_NOTE:_** **NAT-traversal/agent.py** and **NAT-traversal/torrentformat.py** are modified versions of the scripts used by the LAN-only version of the update system in section 1 - the NAT-traversal version will not work with the originals since those were configured to use Serf.
 
-## Setting up a proxy server
+## 2.1: Setting up a proxy server
 
 Proxy servers are required for machines to establish direct peer-to-peer contact when one or more participants are hidden behind NAT. **stunserverlite.py** is essentially a lightweight version of a STUN server which returns external IP and port information for clients, and facilitates group peer-to-peer sessions through sharing peer information and making ports accessible through UDP holepunching.
 
@@ -95,9 +95,11 @@ To start a proxy server, use the following command:
 
 Note that the port used must allow both incoming and outgoing UDP traffic.
 
-## Setting up a client
+## 2.2: Setting up a client
 
 Peer-to-peer clients use the Transmission BitTorrent client for working with torrents. Steps for installing this can be found in this [setup guide](https://github.com/fruit-testbed/p2p-update/blob/master/transmission-items/setup.md "Transmission setup guide").
+
+### 2.2.1: agent.py
 
 **agent.py** must be running to process received torrents, however, clients can still establish peer-to-peer sessions without it. This script reconstructs a received `sendTorrentFile` payload from another peer into a valid torrent file and an MD5 hash string - the torrent file will be automatically added to `transmission-remote` ready for immediate downloading only if the MD5 hash received is the same as the hash value calculated for the reconstructed torrent file (ie. both the sender and the receiver assert this file contains the same data). If a completed download is a puppet manifest, it will be automatically applied to the system.
 
@@ -107,9 +109,13 @@ In a separate terminal instance or as a background process, run the script using
 
 `$ python agent.py`
 
+### 2.2.2: stunclientlite.py
+
 **stunclientlite.py** is used to establish contact with a proxy server, keeping a UDP port open to allow contact from other clients which are also in contact with the server. The current version prints received and sent messages every few seconds, so it is advisable to run this script in a separate terminal instance or redirect output. Run the client script with:
 
 `$ python stunclientlite.py (proxy-server-address) (proxy-server-port)`
+
+### 2.2.3: eventcreate.py
 
 **eventcreate.py** can be used to communicate commands to the client script through a socket bound to `localhost`. These are the commands currently available:
 
@@ -123,4 +129,4 @@ In a separate terminal instance or as a background process, run the script using
 
 Any machine can initiate a peer-to-peer session regardless of the type of NAT obscuring the peer being contacted. This is done by getting each machine to retransmit `TalkTo` messages to mark the `addr:port` combination as 'familiar' to Restricted NAT - the NAT will then allow future traffic from `addr:port`.
 
-**eventcreate.py** also makes calls to `transmission-remote` in lines 134 and 137. Replace `[USERNAME]:[PASSWORD]` with the correct rpc authentication details as explained above.
+**eventcreate.py** also makes calls to `transmission-remote` in lines 134 and 137. Replace `[USERNAME]:[PASSWORD]` with the correct rpc authentication details as explained in **2.2.1: agent.py**.
