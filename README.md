@@ -101,6 +101,8 @@ Peer-to-peer clients use the Transmission BitTorrent client for working with tor
 
 **agent.py** must be running to process received torrents, however, clients can still establish peer-to-peer sessions without it. This script reconstructs a received `sendTorrentFile` payload from another peer into a valid torrent file and an MD5 hash string - the torrent file will be automatically added to `transmission-remote` ready for immediate downloading only if the MD5 hash received is the same as the hash value calculated for the reconstructed torrent file (ie. both the sender and the receiver assert this file contains the same data). If a completed download is a puppet manifest, it will be automatically applied to the system.
 
+System calls to `transmission-remote` require valid rpc authentication details (`rpc-username` and `rpc-password`). Lines 119, 125 and 135 of **agent.py** need the `[USERNAME]:[PASSWORD]` sections of these commands replaced with this information (the single quotations marks should both remain). The default combination is `transmission:transmission`, but this should be changed for additional security according to the steps in the Transmission [setup guide](https://github.com/fruit-testbed/p2p-update/blob/master/transmission-items/setup.md "Transmission setup guide").
+
 In a separate terminal instance or as a background process, run the script using:
 
 `$ python agent.py`
@@ -121,3 +123,4 @@ In a separate terminal instance or as a background process, run the script using
 
 Any machine can initiate a peer-to-peer session regardless of the type of NAT obscuring the peer being contacted. This is done by getting each machine to retransmit `TalkTo` messages to mark the `addr:port` combination as 'familiar' to Restricted NAT - the NAT will then allow future traffic from `addr:port`.
 
+**eventcreate.py** also makes calls to `transmission-remote` in lines 134 and 137. Replace `[USERNAME]:[PASSWORD]` with the correct rpc authentication details as explained above.
