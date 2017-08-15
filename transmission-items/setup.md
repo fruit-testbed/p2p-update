@@ -9,9 +9,9 @@ This repo contains the following files:
 * **lizard.jpg**
 * **lizard.torrent**
 
-**settings.json** is an example of the configuration settings file for Transmission bitTorrent client - Transmission will typically place this in `/etc/transmission-daemon/` if downloaded through package manager.
+**settings.json** is an example of the configuration settings file for Transmission bitTorrent client - Transmission will typically place this in `/etc/transmission-daemon/` if downloaded through apt-get.
 
-The following settings will need to be changed on setup. Note that `transmission-daemon` will instantly overwrite any changes if it is still active while editing - use `sudo service transmission-daemon stop` to avoid this and allow changes to take a=effect.
+The following settings will need to be changed on setup. Note that `transmission-daemon` will instantly overwrite any changes if it is still active while editing - use `sudo service transmission-daemon stop` to avoid this and allow changes to take effect.
    * Machine's IPv4 address (`"bind-address-ipv4": "[IP]"`)
    * Peer listening port (`"peer-port": [PORT]`)
    * Client password (`"rpc-password": "[HASH]"` - note that this is entered as plaintext and then overwritten by a SHA-1 hash as soon as transmission-daemon starts)
