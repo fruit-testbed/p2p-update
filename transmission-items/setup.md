@@ -15,6 +15,7 @@ This repo contains the following files:
    * Client password (`"rpc-password": "[HASH]"` - note that this is entered as plaintext and then overwritten by a SHA-1 hash as soon as transmission-daemon starts)
    * Path for accessing UI (`"rpc-url": "/[URL]/"`)
    * Client username (`"rpc-username": "[USERNAME]"`)
+   
 `"rpc-whitelist"` already has localhost and typical address space behind most NATs defined, but further IP address ranges may need to be added (eg. on university networks).
 
 These settings can be managed through a UI by visiting `[IP]:9091/[URL]/web/`, but most management of Transmission in this project will be done through altering this file instead (ie. headless setup).
