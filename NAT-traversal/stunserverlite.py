@@ -125,12 +125,6 @@ def serverloop(s, dictionary):
 ####################################
 
 
-#Create list for recent connections to send as possible peers
-#peerlist = []
-
-#False data for local testing
-peerlist = [["2.126.122.29", 8990], ["81.4.56.190", 52708]]
-
 #Create dictionary for potential peers
 #Entry format - addr: port (str, int)
 peercandidates = dict()
