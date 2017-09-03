@@ -39,11 +39,17 @@ This repo contains the following files and directories:
 
 ## Setting up Wordpress using Puppet
 
-Install Puppet using `$sudo apt-get install puppet`, then install PuppetLabs Apache and MySQL modules with `$sudo puppet module install puppetlabs-apache` and `$sudo puppet module install puppetlabs-mysql`. Use the command `$sudo puppet module list` to check these have been installed successfully.
+To install Puppet and its required modules:
+- Install Puppet: `$sudo apt-get install puppet`
+- Install PuppetLabs Apache module: `$sudo puppet module install puppetlabs-apache`
+- Install Puppet MySQL module: `$sudo puppet module install puppetlabs-mysql`
 
-Navigate to the `p2p-update/puppet-items` directory. Build the module with `$sudo puppet module build do-wordpress` - this will create a tar.gz file in `puppet-items/do-wordpress/pkg` which can be shared and used for installation.
+Use the command `$sudo puppet module list` to check these have been installed successfully.
 
-Install the new module using `$sudo puppet module install do-wordpress/pkg/do-wordpress-0.1.0.tar.gz`.
+Build and install Puppet Wordpress module:
+- Navigate to the `p2p-update/puppet-items` directory.
+- Build the module with `$sudo puppet module build do-wordpress` - this will create a tar.gz file in `puppet-items/do-wordpress/pkg` which can be shared and used for installation.
+- Install the new module using `$sudo puppet module install do-wordpress/pkg/do-wordpress-0.1.0.tar.gz`.
 
 (To uninstall the module, simply use `$sudo puppet module uninstall do-wordpress`)
 
