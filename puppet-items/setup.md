@@ -39,6 +39,8 @@ This repo contains the following files and directories:
 
 ## Setting up Wordpress using Puppet
 
+This requires Puppet version >=4.7.1. **Warning**: Since default linux repositories do not have the latest version of Puppet, so please visit [Puppet](https://docs.puppet.com/puppet/) on how to get it. 
+
 To install Puppet and its required modules:
 - Install Puppet: `$sudo apt-get install puppet`
 - Install PuppetLabs Apache module: `$sudo puppet module install puppetlabs-apache`
