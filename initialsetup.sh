@@ -1,76 +1,77 @@
-#Change default password
-echo -e "raspberry\n[NEWPASSWORD]\n[NEWPASSWORD]" | passwd pi
+#!/bin/bash
 
-#Set up ssh and reboot if not done already
-sudo service ssh status | grep running
-if [ $? -eq 0 ]
-then
-    echo "ssh already enabled"
-else
-    echo "ssh not enabled - setting up and rebooting..."
-    sudo touch /boot/ssh
-    sudo reboot
+#####
+#
+# This script sets up the required the software components of P2P-Update.
+#
+#####
+
+#Serf node attributes
+node_name=$(hostname)
+discover="fruit"
+role="client"
+datacenter="cloud"
+transmissionuser="fruit"
+transmissionpassword="fruit"
+
+mkdir -p p2p-update
+cd p2p-update
+home=$(pwd)
+
+addr="$(hostname -I | tr -d '[:space:]')"
+echo "ip-address: $addr"
+
+# Install Serf
+apt search serf | grep 'serf\/stable'
+if [ $? -eq 0 ]; then
+  sudo apt-get install serf -y
+elif [ ! -f ./serf ] && [ "$(which serf)" = "" ]; then
+  echo "WARNING: Cannot find serf in apt repositories. You must install it manually."
 fi
 
-#Set system clock
-#Locally accessible server should be placed here
-#Default servers supplied with file don't seem to work
-sudo service ntp stop
-sudo cat /etc/ntp.conf | sudo sed -i '21s/.*/server [ADDRESS HERE]/' /etc/ntp.conf
-sudo ntpd -gq
-sudo service ntp start
-
-#Update apt-get
-sudo apt-get update -y
-#Cater for the emacs-inclined
-sudo apt-get install emacs -y
-
-#Obtain Serf zip and unzip
-#CAUTION: link may change, correct as of 3-Jul-2017
-sudo wget -P /usr/local/sbin https://releases.hashicorp.com/serf/0.8.1/serf_0.8.1_linux_arm.zip
-sudo unzip /usr/local/sbin/serf_0.8.1_linux_arm.zip -d /usr/local/sbin/
-#Cleanup zip file
-sudo rm /usr/local/sbin/serf_0.8.1_linux_arm.zip
-#Create serf config file
-touch serf.conf
-echo "Serf install complete"
-
-
-host=`hostname -I`
-#Strip trailing whitespace from host or serf.conf won't work
-addr="$(echo "${host}" | tr -d '[:space:]')"
-echo $addr
-#Serf node attributes
-node_name="NAME"
-discover="GROUP"
-role="client"
-datacenter="CITY"
-
 #Serf events and scripts
-deployevent="user:deploy=/home/pi/deploy.sh"
-slackevent="user:slack=/home/pi/slack.sh"
-updateevent="user:update=/home/pi/update.sh"
+deployevent="user:deploy=$home/deploy.sh"
+updateevent="user:update=$home/update.sh"
 uptimequery="query:load=uptime"
 
 #Populate data in serf.conf
-echo -e '{\n  "node_name": "'"$node_name"'",\n  "bind": "'"$addr"'",\n  "discover": "'"$discover"'",\n  "tags": {\n    "rpc-addr": "'"$addr"'",\n    "role": "'"$role"'",\n    "datacenter": "'"$datacenter"'"\n  }, \n  "event_handlers": [\n    "'"$deployevent"'",\n    "'"$slackevent"'",\n    "'"$updateevent"'",\n    "'"$uptimequery"'"\n  ]\n}' > serf.conf
+cat > serf.conf <<EOL
+{
+  "node_name": "$node_name",
+  "bind": "$addr",
+  "discover": "$discover",
+  "tags": {
+    "rpc-addr": "$addr",
+    "role": "$client",
+    "datacenter": "$datacenter"
+  }, 
+  "event_handlers": [
+    "$deployevent",
+    "$updateevent",
+    "$uptimequery"
+  ]
+}
+EOL
 echo "serf.conf populated successfully"
 
-#Install Transmission
-sudo apt-get install transmission -y
-sudo apt-get install transmission-daemon -y
+# Ensure NTPD is installed and running
+sudo apt-get install ntp -y && sudo systemctl start ntpd
+
+# Transmission
+sudo apt-get install transmission transmission-daemon unzip -y
 
 #Stop transmission-daemon and edit settings.json
 sudo service transmission-daemon stop
+echo "Updating transmission-daemon settings..."
 sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '9s/.*/    "bind-address-ipv4": "'"$addr"'",/' /etc/transmission-daemon/settings.json
 echo "bind address changed"
 sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '25s/.*/    "lpd-enabled": true,/' /etc/transmission-daemon/settings.json
 echo "lpd enabled"
-sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '53s/.*/    "rpc-whitelist": "127.0.0.1,192.168.\*.\*",/' /etc/transmission-daemon/settings.json
+sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '53s/.*/    "rpc-whitelist": "127.0.0.1,192.168.\*.\*,10.*",/' /etc/transmission-daemon/settings.json
 echo "rpc-whitelist changed"
-sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '49s/.*/    "rpc-password": "NEWPASSWORD",/' /etc/transmission-daemon/settings.json
+sudo cat /etc/transmission-daemon/settings.json | sudo sed -i "49s/.*/    \"rpc-password\": \"$transmissionpassword\",/" /etc/transmission-daemon/settings.json
 echo "rpc-password changed"
-sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '52s/.*/    "rpc-username": "NEWUSERNAME",/' /etc/transmission-daemon/settings.json
+sudo cat /etc/transmission-daemon/settings.json | sudo sed -i "52s/.*/    \"rpc-username\": \"$transmissionuser\",/" /etc/transmission-daemon/settings.json
 echo "rpc-username changed"
 sudo cat /etc/transmission-daemon/settings.json | sudo sed -i '66s/.*/    "umask": 2,/' /etc/transmission-daemon/settings.json
 echo "umask changed"
@@ -78,42 +79,46 @@ echo "umask changed"
 sudo service transmission-daemon start
 echo "Transmission setup complete"
 
+
 #Install puppet
 sudo apt-get install puppet -y
 echo "Puppet install complete"
 
 #Obtain agent.py, submitfile.py and Serf scripts
-wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/agent.py
+wget -q https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/agent.py
+wget -q https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/torrentformat.py
 echo "agent.py downloaded"
-sudo chmod +x agent.py
-wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/submitfile.py
+chmod +x agent.py
+wget -q https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/submitfile.py
 echo "submitfile.py downloaded"
-sudo chmod +x submitfile.py
-wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/serf-items/deploy.sh
+chmod +x submitfile.py
+wget -q https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/serf-items/deploy.sh
 echo "deploy.sh downloaded"
-sudo chmod +x deploy.sh
-wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/serf-items/slack.sh
-echo "slack.sh downloaded"
-sudo chmod +x slack.sh
-wget https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/serf-items/update.sh
+chmod +x deploy.sh
+wget -q https://raw.githubusercontent.com/fruit-testbed/p2p-update/intern17/serf-items/update.sh
 echo "update.sh"
-sudo chmod +x update.sh
+chmod +x update.sh
 
 #Set username and password for Transmission for transmission-remote calls made by agent.py
-sudo cat agent.py | sed -i '79s/USERNAME\:PASSWORD/NEWUSERNAME:NEWPASSWORD/' agent.py
-sudo cat agent.py | sed -i '85s/USERNAME\:PASSWORD/NEWUSERNAME:NEWPASSWORD/' agent.py
-sudo cat agent.py | sed -i '93s/USERNAME\:PASSWORD/NEWUSERNAME:NEWPASSWORD/' agent.py
+sed -i "s/\[USERNAME\]\:\[PASSWORD\]/$transmissionuser:$transmissionpassword/" agent.py
+sed -i "s/\[USERNAME\]\:\[PASSWORD\]/$transmissionuser:$transmissionpassword/" agent.py
+sed -i "s/\[USERNAME\]\:\[PASSWORD\]/$transmissionuser:$transmissionpassword/" agent.py
 
 
 #Create events log file for agent.py
-touch events.log
+sudo touch /var/log/events.log
 echo "Events log created"
 
 echo "Initial setup finished! Launching serf node..."
 #Run serf in the background
-serf agent -config-file serf.conf &
+if [ "$1" = "" ]; then
+  nohup serf agent -config-file serf.conf &
+  echo "start serf agent as standalone"
+else
+  nohup serf agent -config-file serf.conf -join "$1" &
+  echo "start serf agent joining $1"
+fi
 
 #Run agent.py in the background
 echo "Launching agent.py..."
-sudo python agent.py &
-
+sudo nohup python agent.py &

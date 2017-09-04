@@ -7,8 +7,8 @@ while read line
 do
   echo $line > ~/receivedtorrent.torrent
   echo $line >> /tmp/sent-torrents
-  date >> ~/events.log
-  echo "update" >> ~/events.log
+  date >> /var/log/events.log
+  echo "update" >> /var/log/events.log
 done < /dev/stdin
 
 echo "" >> /tmp/sent-torrents

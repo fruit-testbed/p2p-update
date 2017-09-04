@@ -10,7 +10,7 @@ import torrentformat
 #Return latestevent, torrentcomplete, pubkeylist
 def setup():
     #Detect the most recent Serf event before initiating loop (timestamp and type)
-    latestevent = subprocess.check_output("tail -2 events.log", shell=True)
+    latestevent = subprocess.check_output("tail -2 /var/log/events.log", shell=True)
     torrentcomplete = []
     pubkeylist = []
 
@@ -22,7 +22,7 @@ def setup():
     print pubkeylist
 
     try:
-       os.system("sudo touch /home/pi/events.log")
+       os.system("sudo touch /var/log/events.log")
     except:
        pass
     return latestevent, torrentcomplete, pubkeylist
@@ -32,7 +32,7 @@ def eventcheck(logfile, latestevent):
     #Check the last 2 lines of the event log to see which Serf event has been received most recently
     eventcheck = subprocess.check_output("tail -2 %s" % logfile, shell=True)
     #ie. if a new event has been received
-    #eventcheck should only be '' and != latestevent only in the case of dataloss from events.log
+    #eventcheck should only be '' and != latestevent only in the case of dataloss from /var/log/events.log
     if (eventcheck != latestevent) and (eventcheck != ''):
         latestevent = eventcheck
         #eventcheck[0] is a timestamp
@@ -224,7 +224,7 @@ while True:
     #Detect the most recent event received through serf
     #[event-type, timestamp]
     try:
-        event = eventcheck("events.log", latestevent)
+        event = eventcheck("/var/log/events.log", latestevent)
         eventtype = event[0]
         currenttimestamp = event[1]
     except:
