@@ -84,6 +84,7 @@ func (s *Server) processMessage(addr net.Addr, msg []byte, req, res *stun.Messag
     return errors.Wrap(err, "Failed to read message")
   }
 
+  // external IP and port
   var (
     ip net.IP
     port int
@@ -96,6 +97,19 @@ func (s *Server) processMessage(addr net.Addr, msg []byte, req, res *stun.Messag
     panic(fmt.Sprintf("unknown addr: %v", addr))
   }
   log.Printf("Receive packet from %v:%d", ip, port)
+
+  var xorAddr stun.XORMappedAddress
+  if err := xorAddr.GetFrom(req); err != nil {
+    log.Println(err)
+  }
+  var soft stun.Software
+  if err := soft.GetFrom(req); err != nil {
+    log.Println("Software.GetFrom", err)
+  }
+  log.Println(xorAddr, soft)
+  log.Println(req.Raw)
+
+  // Build and return response message
   return res.Build(
     stun.NewTransactionIDSetter(req.TransactionID),
     stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
