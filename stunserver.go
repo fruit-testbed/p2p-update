@@ -22,6 +22,14 @@ type StunServer struct {
   peers   map[string]Peer
 }
 
+func NewStunServer(address string, port int) StunServer {
+  return StunServer {
+    Address: address,
+    Port: port,
+    peers: make(map[string]Peer),
+  }
+}
+
 func (s *StunServer) run(wg *sync.WaitGroup) error {
   defer wg.Done()
 

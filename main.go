@@ -24,10 +24,7 @@ func main() {
   flag.Parse()
 
   if *stunServer {
-    server := StunServer {
-      Address: *address,
-      Port: *port,
-    }
+    server := NewStunServer(*address, *port)
     wg.Add(1)
     go server.run(&wg)
   }
