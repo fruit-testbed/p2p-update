@@ -10,9 +10,16 @@ import (
   "github.com/pkg/errors"
 )
 
+type Peer struct {
+  Id string
+  IP net.IP
+  Port int
+}
+
 type StunServer struct {
   Address string
   Port    int
+  peers   map[string]Peer
 }
 
 func (s *StunServer) run(wg *sync.WaitGroup) error {
@@ -47,6 +54,7 @@ func (s *StunServer) serveConn(c net.PacketConn, res, req *stun.Message) error {
   if c == nil {
     return nil
   }
+
   // Read the packet message
   buf := make([]byte, 1024)
   n, addr, err := c.ReadFrom(buf)
@@ -54,64 +62,50 @@ func (s *StunServer) serveConn(c net.PacketConn, res, req *stun.Message) error {
     log.Printf("ERROR: ReadFrom %v - %v", addr, err)
     return err
   }
-  // Process the STUN message, then create a response
-  if err = s.processMessage(addr, buf[:n], req, res); err != nil {
+
+  // Process the STUN message
+  var reply bool
+  if reply, err = s.processMessage(addr, buf[:n], req, res); err != nil {
     if err == errNonSTUNMessage {
       return nil
     }
     log.Printf("ERROR: processMessage - %v", err)
     return err
+  } else if reply {
+    _, err = c.WriteTo(res.Raw, addr)
+    if err != nil {
+      log.Printf("ERROR: WriteTo - %v", err)
+    }
   }
-  _, err = c.WriteTo(res.Raw, addr)
-  if err != nil {
-    log.Printf("ERROR: WriteTo - %v", err)
-  }
+
   return err
 }
 
-func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Message) error {
+func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Message) (bool, error) {
   if !stun.IsMessage(msg) {
-    return errNonSTUNMessage
+    return false, errNonSTUNMessage
   }
   // Convert the packet message to STUN message format
   if _, err := req.Write(msg); err != nil {
-    return errors.Wrap(err, "Failed to read message")
+    return false, errors.Wrap(err, "Failed to read message")
   }
 
-  // external IP and port
-  var (
-    ip net.IP
-    port int
-  )
+  // Extract Peer's ID, IP, and port from the message
+  var id stun.Username
+  if err := id.GetFrom(req); err != nil {
+    return false, errors.Wrap(err, "Failed to read peer ID")
+  }
   switch peer := addr.(type) {
   case *net.UDPAddr:
-    ip = peer.IP
-    port = peer.Port
+    s.peers[id.String()] = Peer {
+      Id: id.String(),
+      IP: peer.IP,
+      Port: peer.Port,
+    }
+    log.Printf("Register peer %s[%v:%d]", id.String(), peer.IP, peer.Port)
   default:
-    panic(fmt.Sprintf("unknown addr: %v", addr))
+    return false, errors.New(fmt.Sprintf("unknown addr: %v", addr))
   }
-  log.Printf("Receive packet from %v:%d", ip, port)
 
-  var xorAddr stun.XORMappedAddress
-  if err := xorAddr.GetFrom(req); err != nil {
-    log.Println(err)
-  }
-  var soft stun.Software
-  if err := soft.GetFrom(req); err != nil {
-    log.Println("Software.GetFrom", err)
-  }
-  log.Println(xorAddr, soft)
-  log.Println(req.Raw)
-
-  // Build and return response message
-  return res.Build(
-    stun.NewTransactionIDSetter(req.TransactionID),
-    stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
-    software,
-    &stun.XORMappedAddress {
-      IP: ip,
-      Port: port,
-    },
-    stun.Fingerprint,
-  )
+  return false, nil
 }
