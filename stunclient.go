@@ -3,7 +3,6 @@
 package main
 
 import (
-	"fmt"
 	"time"
 	"log"
 
@@ -14,9 +13,8 @@ import (
 type StunClient struct {
 }
 
-func (sc *StunClient) Dial(addr string, port int) error {
-	addr = fmt.Sprintf("%s:%d", addr, port)
-	c, err := stun.Dial("udp", addr)
+func (sc *StunClient) Dial(address string) error {
+	c, err := stun.Dial("udp", address)
 	if err != nil {
 		return errors.Wrap(err, "Failed to dial the server")
 	}

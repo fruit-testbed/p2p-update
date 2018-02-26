@@ -4,18 +4,16 @@ import (
   "flag"
   "log"
   "sync"
-
-  "github.com/gortc/stun"
-  "github.com/pkg/errors"
 )
 
 var (
-  address = flag.String("address", "0.0.0.0", "address to listen")
-  port = flag.Int("port", 3478, "port to listen")
-  stunServer = flag.Bool("stunServer", false, "enable STUN server")
-
-  software = stun.NewSoftware("fruit/p2psecureupdate")
-  errNonSTUNMessage = errors.New("Not STUN Message")
+  enabledStunServer = flag.Bool("enabledStunServer", false,
+      "enabled STUN server")
+  stunServerAddrListen = flag.String("stunServerListen", "0.0.0.0:3478",
+      "[address]:[port] of STUN server to listen")
+  stunServerAddrConnect = flag.String("stunServerConnect",
+      "fruit-testbed.org:3478", "[address]:[port] of STUN server to connect")
+  disabledClient = flag.Bool("disabledClient", false, "disabled client")
 )
 
 func main() {
@@ -23,10 +21,17 @@ func main() {
 
   flag.Parse()
 
-  if *stunServer {
-    server := NewStunServer(*address, *port)
+  if *enabledStunServer {
+    server := NewStunServer(*stunServerAddrListen)
     wg.Add(1)
     go server.run(&wg)
+  }
+
+  if !*disabledClient {
+    client := StunClient{}
+    if err := client.Dial(*stunServerAddrConnect); err != nil {
+      log.Fatal(err)
+    }
   }
 
   wg.Wait()

@@ -10,6 +10,11 @@ import (
   "github.com/pkg/errors"
 )
 
+var (
+  software = stun.NewSoftware("fruit/p2psecureupdate")
+  errNonSTUNMessage = errors.New("Not STUN Message")
+)
+
 type Peer struct {
   Id string
   IP net.IP
@@ -22,14 +27,12 @@ func (p *Peer) String() string {
 
 type StunServer struct {
   Address string
-  Port    int
   peers   map[string]*Peer
 }
 
-func NewStunServer(address string, port int) StunServer {
+func NewStunServer(address string) StunServer {
   return StunServer {
     Address: address,
-    Port: port,
     peers: make(map[string]*Peer),
   }
 }
@@ -37,12 +40,11 @@ func NewStunServer(address string, port int) StunServer {
 func (s *StunServer) run(wg *sync.WaitGroup) error {
   defer wg.Done()
 
-  addrPort := fmt.Sprintf("%s:%d", s.Address, s.Port)
-  conn, err := net.ListenPacket("udp", addrPort)
+  conn, err := net.ListenPacket("udp", s.Address)
   if err != nil {
     return err
   }
-  log.Printf("Serving at %s:%d", s.Address, s.Port)
+  log.Printf("Serving at %s", s.Address)
   s.serve(conn)
   return nil
 }
