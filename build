@@ -1,6 +1,5 @@
 #!/bin/sh -e
 
-HOME=$(dirname $0)
 BIN=p2pupdate
 
-go build -o $BIN $HOME/*.go
+go build -o $BIN *.go
