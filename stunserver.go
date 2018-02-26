@@ -4,6 +4,7 @@ import (
   "fmt"
   "log"
   "net"
+  "sync"
 
   "github.com/gortc/stun"
   "github.com/pkg/errors"
@@ -14,7 +15,9 @@ type StunServer struct {
   Port    int
 }
 
-func (s *StunServer) run() error {
+func (s *StunServer) run(wg *sync.WaitGroup) error {
+  defer wg.Done()
+
   addrPort := fmt.Sprintf("%s:%d", s.Address, s.Port)
   conn, err := net.ListenPacket("udp", addrPort)
   if err != nil {
