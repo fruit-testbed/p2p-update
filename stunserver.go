@@ -16,17 +16,21 @@ type Peer struct {
   Port int
 }
 
+func (p *Peer) String() string {
+  return fmt.Sprintf("%s[%v:%d]", p.Id, p.IP, p.Port)
+}
+
 type StunServer struct {
   Address string
   Port    int
-  peers   map[string]Peer
+  peers   map[string]*Peer
 }
 
 func NewStunServer(address string, port int) StunServer {
   return StunServer {
     Address: address,
     Port: port,
-    peers: make(map[string]Peer),
+    peers: make(map[string]*Peer),
   }
 }
 
@@ -99,18 +103,20 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
   }
 
   // Extract Peer's ID, IP, and port from the message
-  var id stun.Username
-  if err := id.GetFrom(req); err != nil {
+  var username stun.Username
+  if err := username.GetFrom(req); err != nil {
     return false, errors.Wrap(err, "Failed to read peer ID")
   }
   switch peer := addr.(type) {
   case *net.UDPAddr:
-    s.peers[id.String()] = Peer {
-      Id: id.String(),
+    id := username.String()
+    p := &Peer {
+      Id: id,
       IP: peer.IP,
       Port: peer.Port,
     }
-    log.Printf("Register peer %s[%v:%d]", id.String(), peer.IP, peer.Port)
+    s.peers[id] = p
+    log.Printf("Registered peer %s", p.String())
   default:
     return false, errors.New(fmt.Sprintf("unknown addr: %v", addr))
   }
