@@ -58,15 +58,7 @@ func (sa *StunAgent) Start(address string) error {
 	fsuccess := func(res *stun.Event) {
 		log.Println("Ping STUN server was successful. Dialing STUN server.")
 		time.Sleep(1000 * time.Millisecond)
-		m := stun.MustBuild(
-			stun.TransactionID,
-			stun.NewType(stun.MethodRefresh, stun.ClassRequest),
-			stunSoftware,
-			stun.NewUsername(sa.Id),
-			stun.NewShortTermIntegrity(stunPassword),
-			stun.Fingerprint,
-		)
-		if err := sa.Client.Do(m, sa.Deadline, sa.callback(noResponse, noResponse)); err != nil {
+		if err := sa.Client.Do(sa.pingMessage(), sa.Deadline, sa.callback(noResponse, noResponse)); err != nil {
 			log.Printf("Failed to dial the server: %v", err)
 		}
 	}
@@ -82,7 +74,14 @@ func (sa *StunAgent) Start(address string) error {
 		}
 	}
 
-	m := stun.MustBuild(
+	if err := sa.Client.Do(sa.pingMessage(), sa.Deadline, sa.callback(fsuccess, ferror)); err != nil {
+		return errors.Wrap(err, "Failed to dial the server")
+	}
+	return nil
+}
+
+func (sa *StunAgent) pingMessage() *stun.Message {
+	return stun.MustBuild(
 		stun.TransactionID,
 		stun.NewType(stun.MethodRefresh, stun.ClassRequest),
 		stunSoftware,
@@ -90,10 +89,6 @@ func (sa *StunAgent) Start(address string) error {
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
 	)
-	if err := sa.Client.Do(m, sa.Deadline, sa.callback(fsuccess, ferror)); err != nil {
-		return errors.Wrap(err, "Failed to dial the server")
-	}
-	return nil
 }
 
 func (sa *StunAgent) callback(fsuccess func(*stun.Event), ferror func(*stun.Event)) func(stun.Event) {
