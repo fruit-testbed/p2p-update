@@ -22,12 +22,14 @@ func (p *Peer) String() string {
 
 type StunServer struct {
   Address string
+  Username string
   peers   map[string]*Peer
 }
 
 func NewStunServer(address string) StunServer {
   return StunServer {
     Address: address,
+    Username: "fruit",
     peers: make(map[string]*Peer),
   }
 }
@@ -99,10 +101,39 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
     return false, errors.Wrap(err, "Failed to read message")
   }
 
-  // Extract Peer's ID, IP, and port from the message
+  if ok, err := ValidMessage(req); err != nil {
+    return false, errors.Wrap(err, "Invalid message")
+  } else if !ok {
+    return false, errors.New("Invalid message")
+  }
+
+  if req.Type.Method == stun.MethodRefresh &&
+      req.Type.Class == stun.ClassRequest {
+    return true, s.replyPing(addr, req, res)
+  } else if req.Type.Method == stun.MethodBinding &&
+      req.Type.Class == stun.ClassRequest {
+    return false, s.registerPeer(addr, req)
+  }
+
+  return false, nil
+}
+
+func (s *StunServer) replyPing(addr net.Addr, req, res *stun.Message) error {
+  return res.Build(
+    stun.NewTransactionIDSetter(req.TransactionID),
+		stunSoftware,
+		stun.NewUsername(s.Username),
+		stun.NewLongTermIntegrity(s.Username, stunRealm, stunPassword),
+		stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
+		stun.Fingerprint,
+  )
+}
+
+func (s *StunServer) registerPeer(addr net.Addr, req *stun.Message) error {
+  // Extract Peer's ID, IP, and port from the message, then register it
   var username stun.Username
   if err := username.GetFrom(req); err != nil {
-    return false, errors.Wrap(err, "Failed to read peer ID")
+    return errors.Wrap(err, "Failed to read peer ID")
   }
   switch peer := addr.(type) {
   case *net.UDPAddr:
@@ -115,8 +146,7 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
     s.peers[id] = p
     log.Printf("Registered peer %s", p.String())
   default:
-    return false, errors.New(fmt.Sprintf("unknown addr: %v", addr))
+    return errors.New(fmt.Sprintf("unknown addr: %v", addr))
   }
-
-  return false, nil
+  return nil
 }
