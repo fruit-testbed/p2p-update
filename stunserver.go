@@ -22,16 +22,21 @@ func (p *Peer) String() string {
 
 type StunServer struct {
   Address string
-  Username string
+  Id string
   peers   map[string]*Peer
 }
 
-func NewStunServer(address string) StunServer {
-  return StunServer {
-    Address: address,
-    Username: "fruit",
-    peers: make(map[string]*Peer),
+func NewStunServer(address string) (*StunServer, error) {
+  var id string
+  var err error
+  if id, err = localId(); err != nil {
+    return nil, errors.Wrap(err, "Cannot get local id")
   }
+  return &StunServer {
+    Address: address,
+    Id: id,
+    peers: make(map[string]*Peer),
+  }, nil
 }
 
 func (s *StunServer) run(wg *sync.WaitGroup) error {
@@ -41,7 +46,7 @@ func (s *StunServer) run(wg *sync.WaitGroup) error {
   if err != nil {
     return err
   }
-  log.Printf("Serving at %s", s.Address)
+  log.Printf("Serving at %s with id:%s", s.Address, s.Id)
   s.serve(conn)
   return nil
 }
@@ -123,7 +128,7 @@ func (s *StunServer) replyPing(addr net.Addr, req, res *stun.Message) error {
     stun.NewTransactionIDSetter(req.TransactionID),
     stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse),
 		stunSoftware,
-		stun.NewUsername(s.Username),
+		stun.NewUsername(s.Id),
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
   )

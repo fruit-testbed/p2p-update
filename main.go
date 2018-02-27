@@ -24,9 +24,12 @@ func main() {
   flag.Parse()
 
   if *enabledStunServer {
-    server := NewStunServer(*stunServerAddrListen)
-    wg.Add(1)
-    go server.run(&wg)
+    if server, err := NewStunServer(*stunServerAddrListen); err == nil {
+      wg.Add(1)
+      go server.run(&wg)
+    } else {
+      log.Fatalln("Failed starting the STUN server: %v", err)
+    }
   }
 
   if !*disabledClient {

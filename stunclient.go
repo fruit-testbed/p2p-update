@@ -10,17 +10,17 @@ import (
 )
 
 type StunClient struct {
-	Username string
+	Id string
 }
 
 func NewStunClient() (*StunClient, error) {
-	var username string
+	var id string
 	var err error
-	if username, err = localUsername(); err != nil {
-		return nil, errors.Wrap(err, "Cannot get local username")
+	if id, err = localId(); err != nil {
+		return nil, errors.Wrap(err, "Cannot get local id")
 	}
 	return &StunClient {
-		Username: username,
+		Id: id,
 	}, nil
 }
 
@@ -33,7 +33,7 @@ func (sc *StunClient) Ping(address string, f func(stun.Event)) error {
 		stun.TransactionID,
 		stun.NewType(stun.MethodRefresh, stun.ClassRequest),
 		stunSoftware,
-		stun.NewUsername(sc.Username),
+		stun.NewUsername(sc.Id),
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
 	)

@@ -79,7 +79,7 @@ func getActiveMacAddress() (string, error) {
 	return "", errors.New("No active ethernet available")
 }
 
-func localUsername() (string, error) {
+func localId() (string, error) {
 	if serial, err := piSerial(); err == nil {
 		return serial, nil
 	}
