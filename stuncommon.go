@@ -2,6 +2,11 @@ package main
 
 import (
   "fmt"
+  "net"
+  "bytes"
+  "os"
+  "bufio"
+  "strings"
 
   "github.com/gortc/stun"
   "github.com/pkg/errors"
@@ -39,4 +44,50 @@ func ValidMessage(m *stun.Message) (bool, error) {
   }
 
   return true, nil
+}
+
+func piSerial() (string, error) {
+	file, err := os.Open("/proc/cpuinfo")
+	if err != nil {
+		return "", errors.New("Cannot open /proc/cpuinfo")
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(line) > 10 && line[0:7] == "Serial\t" {
+			return strings.TrimLeft(strings.Split(line, " ")[1], "0"), nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		errors.Wrap(err, "Failed to read serial number")
+	}
+	return "", errors.New("Cannot find serial number from /proc/cpuinfo")
+}
+
+func getActiveMacAddress() (string, error) {
+	if interfaces, err := net.Interfaces(); err != nil {
+    return "", err
+  } else {
+		for _, i := range interfaces {
+			if i.Flags&net.FlagUp != 0 && bytes.Compare(i.HardwareAddr, nil) != 0 {
+				// Don't use random as we have a real address
+				return i.HardwareAddr.String(), nil
+			}
+		}
+	}
+	return "", errors.New("No active ethernet available")
+}
+
+func localUsername() (string, error) {
+	if serial, err := piSerial(); err == nil {
+		return serial, nil
+	}
+  if mac, err := getActiveMacAddress(); err == nil {
+		return strings.Replace(mac, ":", "", -1), nil
+	}
+  if hostname, err := os.Hostname(); err == nil {
+    return hostname, nil
+  }
+  return "", errors.New("CPU serial, active ethernet, and hostname are not available")
 }
