@@ -121,7 +121,7 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
 func (s *StunServer) replyPing(addr net.Addr, req, res *stun.Message) error {
   return res.Build(
     stun.NewTransactionIDSetter(req.TransactionID),
-    stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
+    stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse),
 		stunSoftware,
 		stun.NewUsername(s.Username),
 		stun.NewShortTermIntegrity(stunPassword),

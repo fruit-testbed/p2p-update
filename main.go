@@ -44,7 +44,7 @@ func main() {
         log.Println("invalid message")
       } else if res.Message.Type.Method == stun.MethodRefresh &&
           res.Message.Type.Class == stun.ClassSuccessResponse {
-        log.Println("got reply from server")
+        log.Println("got a reply from server")
       } else {
         log.Println("invalid message method/class")
       }
