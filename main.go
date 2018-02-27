@@ -4,8 +4,6 @@ import (
   "flag"
   "log"
   "sync"
-
-  "github.com/gortc/stun"
 )
 
 var (
@@ -33,21 +31,11 @@ func main() {
   }
 
   if !*disabledClient {
-    client, err := NewStunClient()
-    if err != nil {
-      log.Fatal(err)
-    }
-    callback := func(res stun.Event) {
-      if res.Error != nil {
-        log.Fatal(res.Error)
+    if client, err := NewStunClient(); err == nil {
+      if err = client.NewStunSession().Start(*stunServerAddrConnect); err != nil {
+        log.Fatal(err)
       }
-      if err := ValidateMessage(res.Message, &stunTypeRefreshSuccess); err != nil {
-        log.Println("invalid message", err)
-      } else {
-        log.Println("got a reply from server")
-      }
-    }
-    if err = client.Ping(*stunServerAddrConnect, callback); err != nil {
+    } else {
       log.Fatal(err)
     }
   }
