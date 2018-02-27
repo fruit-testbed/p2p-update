@@ -41,10 +41,8 @@ func main() {
       if res.Error != nil {
         log.Fatal(res.Error)
       }
-      if ok, err := ValidMessage(res.Message, &stunTypeRefreshSuccess); err != nil {
-        log.Println("failed to validate message", err)
-      } else if !ok {
-        log.Println("invalid message")
+      if err := ValidateMessage(res.Message, &stunTypeRefreshSuccess); err != nil {
+        log.Println("invalid message", err)
       } else {
         log.Println("got a reply from server")
       }

@@ -106,10 +106,8 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
     return false, errors.Wrap(err, "Failed to read message")
   }
 
-  if ok, err := ValidMessage(req, nil); err != nil {
+  if err := ValidateMessage(req, nil); err != nil {
     return false, errors.Wrap(err, "Invalid message")
-  } else if !ok {
-    return false, errors.New("Invalid message")
   }
 
   if req.Type.Method == stun.MethodRefresh &&

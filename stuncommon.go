@@ -23,7 +23,7 @@ var (
   errNonSTUNMessage = errors.New("Not STUN Message")
 )
 
-func ValidMessage(m *stun.Message, t *stun.MessageType) error {
+func ValidateMessage(m *stun.Message, t *stun.MessageType) error {
   var soft stun.Software
   var err error
 
