@@ -1,5 +1,3 @@
-// adapted from: https://github.com/gortc/stun/blob/master/cmd/stun-client/stun-client.go
-
 package main
 
 import (
