@@ -4,7 +4,9 @@ package main
 
 import (
 	"time"
-	"log"
+	"os"
+  "bufio"
+  "strings"
 
 	"github.com/gortc/stun"
 	"github.com/pkg/errors"
@@ -15,14 +17,41 @@ type StunClient struct {
 }
 
 func NewStunClient() (*StunClient, error) {
-	var serial string
+	var username string
 	var err error
-	if serial, err = PiSerial(); err != nil {
-		log.Printf("WARNING: %v", err)
+	if username, err = localUsername(); err != nil {
+		return nil, errors.Wrap(err, "Cannot get local username")
 	}
 	return &StunClient {
-		Username: serial,
+		Username: username,
 	}, nil
+}
+
+func piSerial() (string, error) {
+	file, err := os.Open("/proc/cpuinfo")
+	if err != nil {
+		return "", errors.New("Cannot open /proc/cpuinfo")
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if len(line) > 10 && line[0:7] == "Serial\t" {
+			return strings.TrimLeft(strings.Split(line, " ")[1], "0"), nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		errors.Wrap(err, "Failed to read serial number")
+	}
+	return "", errors.New("Cannot find serial number from /proc/cpuinfo")
+}
+
+func localUsername() (string, error) {
+	if serial, err := piSerial(); err == nil {
+		return serial, nil
+	} else {
+		return os.Hostname()
+	}
 }
 
 func (sc *StunClient) Ping(address string, f func(stun.Event)) error {
