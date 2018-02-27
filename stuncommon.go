@@ -6,6 +6,7 @@ import (
 )
 
 var (
-  software = stun.NewSoftware("fruit/p2psecureupdate")
+  stunRealm = "fruit-testbed.org"
+  stunSoftware = stun.NewSoftware("fruit/p2psecureupdate")
   errNonSTUNMessage = errors.New("Not STUN Message")
 )

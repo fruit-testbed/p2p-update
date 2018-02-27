@@ -11,17 +11,25 @@ import (
 )
 
 type StunClient struct {
-	Username stun.Username
+	Username string
+	Realm    string
+	Password string
 }
 
-func NewStunClient() StunClient {
-	serial, err := PiSerial()
-	if err != nil {
+func NewStunClient() (*StunClient, error) {
+	var serial, passwd string
+	var err error
+	if serial, err = PiSerial(); err != nil {
 		log.Printf("WARNING: %v", err)
 	}
-	return StunClient {
-		Username: stun.NewUsername(serial),
+	if passwd, err = PiPassword(); err != nil {
+		return nil, err
 	}
+	return &StunClient {
+		Username: serial,
+		Realm: stunRealm,
+		Password: passwd,
+	}, nil
 }
 
 func (sc *StunClient) Dial(address string) error {
@@ -31,8 +39,9 @@ func (sc *StunClient) Dial(address string) error {
 	}
 	m := stun.MustBuild(
 		stun.TransactionID,
-		stun.BindingRequest,
-		sc.Username,
+		stunSoftware,
+		stun.NewLongTermIntegrity(sc.Username, sc.Realm, sc.Password),
+		stun.NewType(stun.MethodCreatePermission, stun.ClassIndication),
 		stun.Fingerprint,
 	)
 	if err := c.Do(m, time.Time{}, nil); err != nil {
