@@ -11,36 +11,20 @@ import (
 
 type StunClient struct {
 	Id string
+	Client *stun.Client
 }
 
 func NewStunClient() (*StunClient, error) {
 	var id string
 	var err error
+	//var conn net.Conn
 	if id, err = localId(); err != nil {
 		return nil, errors.Wrap(err, "Cannot get local id")
 	}
+	//conn, err = net.Dial("udp", nil)
 	return &StunClient {
 		Id: id,
 	}, nil
-}
-
-func (sc *StunClient) Ping(address string, deadline time.Time, f func(stun.Event)) error {
-	c, err := stun.Dial("udp", address)
-	if err != nil {
-		return errors.Wrap(err, "Failed to dial the server")
-	}
-	m := stun.MustBuild(
-		stun.TransactionID,
-		stun.NewType(stun.MethodRefresh, stun.ClassRequest),
-		stunSoftware,
-		stun.NewUsername(sc.Id),
-		stun.NewShortTermIntegrity(stunPassword),
-		stun.Fingerprint,
-	)
-	if err := c.Do(m, deadline, f); err != nil {
-		return errors.Wrap(err, "Failed to dial the server")
-	}
-	return nil
 }
 
 func (c *StunClient) NewStunSession() *StunSession {
@@ -90,14 +74,43 @@ func (ss *StunSession) Start(address string) error {
 	ss.Alive = true
 	fsuccess := func(res *stun.Event) {
 		log.Println("Ping STUN server was successful. Dialing STUN server.")
-		/*f := ss.callback(ss.dialSuccess, ss.dialError)
-		ss.Client.Dial(*stunServerAddrConnect, ss.Deadline, f)*/
+		time.Sleep(1000 * time.Millisecond)
+		m := stun.MustBuild(
+			stun.TransactionID,
+			stun.NewType(stun.MethodRefresh, stun.ClassRequest),
+			stunSoftware,
+			stun.NewUsername(ss.Client.Id),
+			stun.NewShortTermIntegrity(stunPassword),
+			stun.Fingerprint,
+		)
+		if err := ss.Client.Client.Do(m, ss.Deadline, ss.callback(noResponse, noResponse)); err != nil {
+			log.Printf(fmt.Sprintf("Failed to dial the server: %v", err))
+		}
 	}
 	ferror := func(res *stun.Event) {
 		log.Println("WARNING: Cannot ping STUN server at %s", *stunServerAddrConnect)
 		ss.Alive = false
 	}
-	return ss.Client.Ping(*stunServerAddrConnect, ss.Deadline, ss.callback(fsuccess, ferror))
+
+	var err error
+	if ss.Client.Client == nil {
+		if ss.Client.Client, err = stun.Dial("udp", address); err != nil {
+			return errors.Wrap(err, "Failed to dial the server")
+		}
+	}
+
+	m := stun.MustBuild(
+		stun.TransactionID,
+		stun.NewType(stun.MethodRefresh, stun.ClassRequest),
+		stunSoftware,
+		stun.NewUsername(ss.Client.Id),
+		stun.NewShortTermIntegrity(stunPassword),
+		stun.Fingerprint,
+	)
+	if err := ss.Client.Client.Do(m, ss.Deadline, ss.callback(fsuccess, ferror)); err != nil {
+		return errors.Wrap(err, "Failed to dial the server")
+	}
+	return nil
 }
 
 func (ss *StunSession) callback(fsuccess func(*stun.Event), ferror func(*stun.Event)) func(stun.Event) {

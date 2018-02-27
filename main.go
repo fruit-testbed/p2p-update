@@ -31,8 +31,13 @@ func main() {
   }
 
   if !*disabledClient {
-    if client, err := NewStunClient(); err == nil {
-      if err = client.NewStunSession().Start(*stunServerAddrConnect); err != nil {
+    client, err := NewStunClient()
+    if err == nil {
+      sess := client.NewStunSession()
+      if err = sess.Start(*stunServerAddrConnect); err != nil {
+        log.Fatal(err)
+      }
+      if err = sess.Start(*stunServerAddrConnect); err != nil {
         log.Fatal(err)
       }
     } else {

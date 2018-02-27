@@ -122,6 +122,13 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
 }
 
 func (s *StunServer) replyPing(addr net.Addr, req, res *stun.Message) error {
+  switch peer := addr.(type) {
+  case *net.UDPAddr:
+    log.Printf("Received ping from peer %v[%d]", peer.IP, peer.Port)
+  default:
+    return errors.New(fmt.Sprintf("unknown addr: %v", addr))
+  }
+
   return res.Build(
     stun.NewTransactionIDSetter(req.TransactionID),
     stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse),
