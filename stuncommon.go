@@ -16,34 +16,43 @@ var (
   stunRealm = "fruit-testbed.org"
   stunSoftware = stun.NewSoftware("fruit/p2psecureupdate")
   stunPassword = "123"
+
+  stunTypeRefreshRequest = stun.NewType(stun.MethodRefresh, stun.ClassRequest)
+  stunTypeRefreshSuccess = stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse)
+
   errNonSTUNMessage = errors.New("Not STUN Message")
 )
 
-func ValidMessage(m *stun.Message) (bool, error) {
+func ValidMessage(m *stun.Message, t *stun.MessageType) error {
   var soft stun.Software
   var err error
 
+  if t != nil && (m.Type.Method != t.Method || m.Type.Class != t.Class) {
+    return errors.New(fmt.Sprintf("incorrect message type, expected %v but got %v",
+        *t, m.Type))
+  }
+
   if err = soft.GetFrom(m); err != nil {
-    return false, err
+    return err
   } else if soft.String() != stunSoftware.String() {
-    return false, nil
+    return errors.New(fmt.Sprintf("Invalid software: %s", soft.String()))
   }
 
   var username stun.Username
   if err = username.GetFrom(m); err != nil {
-    return false, err
+    return err
   }
 
   if err = stun.Fingerprint.Check(m); err != nil {
-    return false, errors.New(fmt.Sprintf("fingerprint is incorrect: %v", err))
+    return errors.New(fmt.Sprintf("fingerprint is incorrect: %v", err))
   }
 
   i := stun.NewShortTermIntegrity(stunPassword)
   if err = i.Check(m); err != nil {
-    return false, errors.New(fmt.Sprintf("Integrity bad: %v", err))
+    return errors.New(fmt.Sprintf("Integrity bad: %v", err))
   }
 
-  return true, nil
+  return nil
 }
 
 func piSerial() (string, error) {

@@ -41,15 +41,12 @@ func main() {
       if res.Error != nil {
         log.Fatal(res.Error)
       }
-      if ok, err := ValidMessage(res.Message); err != nil {
+      if ok, err := ValidMessage(res.Message, &stunTypeRefreshSuccess); err != nil {
         log.Println("failed to validate message", err)
       } else if !ok {
         log.Println("invalid message")
-      } else if res.Message.Type.Method == stun.MethodRefresh &&
-          res.Message.Type.Class == stun.ClassSuccessResponse {
-        log.Println("got a reply from server")
       } else {
-        log.Println("invalid message method/class")
+        log.Println("got a reply from server")
       }
     }
     if err = client.Ping(*stunServerAddrConnect, callback); err != nil {
