@@ -10,11 +10,6 @@ import (
   "github.com/pkg/errors"
 )
 
-var (
-  software = stun.NewSoftware("fruit/p2psecureupdate")
-  errNonSTUNMessage = errors.New("Not STUN Message")
-)
-
 type Peer struct {
   Id string
   IP net.IP
