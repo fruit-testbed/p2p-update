@@ -33,7 +33,7 @@ func ValidMessage(m *stun.Message) (bool, error) {
     return false, errors.New(fmt.Sprintf("fingerprint is incorrect: %v", err))
   }
 
-  i := stun.NewLongTermIntegrity(username.String(), stunRealm, stunPassword)
+  i := stun.NewShortTermIntegrity(stunPassword)
   if err = i.Check(m); err != nil {
     return false, errors.New(fmt.Sprintf("Integrity bad: %v", err))
   }

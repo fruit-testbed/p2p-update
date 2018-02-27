@@ -123,7 +123,7 @@ func (s *StunServer) replyPing(addr net.Addr, req, res *stun.Message) error {
     stun.NewTransactionIDSetter(req.TransactionID),
 		stunSoftware,
 		stun.NewUsername(s.Username),
-		stun.NewLongTermIntegrity(s.Username, stunRealm, stunPassword),
+		stun.NewShortTermIntegrity(stunPassword),
 		stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
 		stun.Fingerprint,
   )

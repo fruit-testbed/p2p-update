@@ -12,8 +12,6 @@ import (
 
 type StunClient struct {
 	Username string
-	Realm    string
-	Password string
 }
 
 func NewStunClient() (*StunClient, error) {
@@ -24,8 +22,6 @@ func NewStunClient() (*StunClient, error) {
 	}
 	return &StunClient {
 		Username: serial,
-		Realm: stunRealm,
-		Password: stunPassword,
 	}, nil
 }
 
@@ -38,7 +34,7 @@ func (sc *StunClient) Ping(address string, f func(stun.Event)) error {
 		stun.TransactionID,
 		stunSoftware,
 		stun.NewUsername(sc.Username),
-		stun.NewLongTermIntegrity(sc.Username, sc.Realm, sc.Password),
+		stun.NewShortTermIntegrity(stunPassword),
 		stun.NewType(stun.MethodRefresh, stun.ClassRequest),
 		stun.Fingerprint,
 	)
