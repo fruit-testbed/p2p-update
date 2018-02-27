@@ -21,9 +21,7 @@ var (
   stunTypeRefreshRequest = stun.NewType(stun.MethodRefresh, stun.ClassRequest)
   stunTypeRefreshSuccess = stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse)
 
-  stunWaitReplyDeadline =  time.Now().Add(time.Second * 5)
-
-  stunSessionMaxErrors = 10
+  stunReplyTimeout = time.Second * 5
 
   errNonSTUNMessage = errors.New("Not STUN Message")
 )

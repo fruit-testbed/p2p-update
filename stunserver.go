@@ -17,7 +17,7 @@ type Peer struct {
 }
 
 func (p *Peer) String() string {
-  return fmt.Sprintf("%s[%v:%d]", p.Id, p.IP, p.Port)
+  return fmt.Sprintf("%s[%v[%d]]", p.Id, p.IP, p.Port)
 }
 
 type StunServer struct {
@@ -115,8 +115,9 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
     return true, s.replyPing(addr, req, res)
   } else if req.Type.Method == stun.MethodBinding &&
       req.Type.Class == stun.ClassRequest {
-    return false, s.registerPeer(addr, req)
+    return true, s.registerPeer(addr, req, res)
   }
+  log.Printf("not replying: %v", *req)
 
   return false, nil
 }
@@ -139,24 +140,33 @@ func (s *StunServer) replyPing(addr net.Addr, req, res *stun.Message) error {
   )
 }
 
-func (s *StunServer) registerPeer(addr net.Addr, req *stun.Message) error {
+func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) error {
   // Extract Peer's ID, IP, and port from the message, then register it
   var username stun.Username
   if err := username.GetFrom(req); err != nil {
     return errors.Wrap(err, "Failed to read peer ID")
   }
+  p := &Peer{}
   switch peer := addr.(type) {
   case *net.UDPAddr:
-    id := username.String()
-    p := &Peer {
-      Id: id,
-      IP: peer.IP,
-      Port: peer.Port,
-    }
-    s.peers[id] = p
+    p.Id = username.String()
+    p.IP = peer.IP
+    p.Port = peer.Port
+    s.peers[p.Id] = p
     log.Printf("Registered peer %s", p.String())
   default:
     return errors.New(fmt.Sprintf("unknown addr: %v", addr))
   }
-  return nil
+  return res.Build(
+    stun.NewTransactionIDSetter(req.TransactionID),
+    stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
+		stunSoftware,
+    &stun.XORMappedAddress {
+      IP: p.IP,
+      Port: p.Port,
+    },
+		stun.NewUsername(s.Id),
+		stun.NewShortTermIntegrity(stunPassword),
+		stun.Fingerprint,
+  )
 }

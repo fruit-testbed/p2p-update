@@ -4,6 +4,7 @@ import (
   "flag"
   "log"
   "sync"
+  "time"
 )
 
 var (
@@ -31,14 +32,15 @@ func main() {
   }
 
   if !*disabledClient {
-    stunAgent, err := NewStunAgent()
+    c, err := NewStunClient()
     if err == nil {
-      if err = stunAgent.Start(*stunServerAddrConnect); err != nil {
+      if err = c.Start(*stunServerAddrConnect); err != nil {
         log.Fatal(err)
       }
-      if err = stunAgent.Start(*stunServerAddrConnect); err != nil {
-        log.Fatal(err)
-      }
+      time.Sleep(10000 * time.Millisecond)
+      c.Stop()
+      time.Sleep(1000 * time.Millisecond)
+      log.Println(c.State)
     } else {
       log.Fatal(err)
     }
