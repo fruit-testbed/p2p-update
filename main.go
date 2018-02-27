@@ -4,6 +4,8 @@ import (
   "flag"
   "log"
   "sync"
+
+  "github.com/gortc/stun"
 )
 
 var (
@@ -32,7 +34,22 @@ func main() {
     if err != nil {
       log.Fatal(err)
     }
-    if err = client.Dial(*stunServerAddrConnect); err != nil {
+    callback := func(res stun.Event) {
+      if res.Error != nil {
+        log.Fatal(res.Error)
+      }
+      if ok, err := ValidMessage(res.Message); err != nil {
+        log.Println("failed to validate message", err)
+      } else if !ok {
+        log.Println("invalid message")
+      } else if res.Message.Type.Method == stun.MethodRefresh &&
+          res.Message.Type.Class == stun.ClassSuccessResponse {
+        log.Println("got reply from server")
+      } else {
+        log.Println("invalid message method/class")
+      }
+    }
+    if err = client.Ping(*stunServerAddrConnect, callback); err != nil {
       log.Fatal(err)
     }
   }

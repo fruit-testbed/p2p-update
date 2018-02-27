@@ -17,22 +17,19 @@ type StunClient struct {
 }
 
 func NewStunClient() (*StunClient, error) {
-	var serial, passwd string
+	var serial string
 	var err error
 	if serial, err = PiSerial(); err != nil {
 		log.Printf("WARNING: %v", err)
 	}
-	if passwd, err = PiPassword(); err != nil {
-		return nil, err
-	}
 	return &StunClient {
 		Username: serial,
 		Realm: stunRealm,
-		Password: passwd,
+		Password: stunPassword,
 	}, nil
 }
 
-func (sc *StunClient) Dial(address string) error {
+func (sc *StunClient) Ping(address string, f func(stun.Event)) error {
 	c, err := stun.Dial("udp", address)
 	if err != nil {
 		return errors.Wrap(err, "Failed to dial the server")
@@ -40,11 +37,13 @@ func (sc *StunClient) Dial(address string) error {
 	m := stun.MustBuild(
 		stun.TransactionID,
 		stunSoftware,
+		stun.NewUsername(sc.Username),
 		stun.NewLongTermIntegrity(sc.Username, sc.Realm, sc.Password),
-		stun.NewType(stun.MethodCreatePermission, stun.ClassIndication),
+		stun.NewType(stun.MethodRefresh, stun.ClassRequest),
 		stun.Fingerprint,
 	)
-	if err := c.Do(m, time.Time{}, nil); err != nil {
+	deadline := time.Now().Add(time.Second * 5)
+	if err := c.Do(m, deadline, f); err != nil {
 		return errors.Wrap(err, "Failed to dial the server")
 	}
 	return nil

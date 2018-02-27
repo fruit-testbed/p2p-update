@@ -26,8 +26,3 @@ func PiSerial() (string, error) {
 	}
 	return "", errors.New("Cannot find serial number from /proc/cpuinfo")
 }
-
-func PiPassword() (string, error) {
-  // TODO: implement this
-  return "123", nil
-}
