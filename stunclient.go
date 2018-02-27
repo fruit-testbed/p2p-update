@@ -32,10 +32,10 @@ func (sc *StunClient) Ping(address string, f func(stun.Event)) error {
 	}
 	m := stun.MustBuild(
 		stun.TransactionID,
+		stun.NewType(stun.MethodRefresh, stun.ClassRequest),
 		stunSoftware,
 		stun.NewUsername(sc.Username),
 		stun.NewShortTermIntegrity(stunPassword),
-		stun.NewType(stun.MethodRefresh, stun.ClassRequest),
 		stun.Fingerprint,
 	)
 	deadline := time.Now().Add(time.Second * 5)
