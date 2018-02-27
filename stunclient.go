@@ -11,6 +11,17 @@ import (
 )
 
 type StunClient struct {
+	Username stun.Username
+}
+
+func NewStunClient() StunClient {
+	serial, err := PiSerial()
+	if err != nil {
+		log.Printf("WARNING: %v", err)
+	}
+	return StunClient {
+		Username: stun.NewUsername(serial),
+	}
 }
 
 func (sc *StunClient) Dial(address string) error {
@@ -18,15 +29,10 @@ func (sc *StunClient) Dial(address string) error {
 	if err != nil {
 		return errors.Wrap(err, "Failed to dial the server")
 	}
-	var serial string
-	serial, err = PiSerial()
-	if err != nil {
-		log.Printf("WARNING: %v", err)
-	}
 	m := stun.MustBuild(
 		stun.TransactionID,
 		stun.BindingRequest,
-		stun.NewUsername(serial),
+		sc.Username,
 		stun.Fingerprint,
 	)
 	if err := c.Do(m, time.Time{}, nil); err != nil {

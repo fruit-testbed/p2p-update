@@ -28,7 +28,7 @@ func main() {
   }
 
   if !*disabledClient {
-    client := StunClient{}
+    client := NewStunClient()
     if err := client.Dial(*stunServerAddrConnect); err != nil {
       log.Fatal(err)
     }
