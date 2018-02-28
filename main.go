@@ -40,7 +40,7 @@ func main() {
 			time.Sleep(10000 * time.Millisecond)
 			c.Stop()
 			time.Sleep(1000 * time.Millisecond)
-			log.Println(c.State)
+			log.Println(c.fsm.Current())
 		} else {
 			log.Fatal(err)
 		}
