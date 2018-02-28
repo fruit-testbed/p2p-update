@@ -33,7 +33,7 @@ type StunClient struct {
 	ID     string
 	client *stun.Client
 	State  StunState
-	fsm    chan int
+	event  chan int
 	quit   chan int
 }
 
@@ -48,7 +48,7 @@ func NewStunClient() (*StunClient, error) {
 	return &StunClient{
 		ID:    id,
 		State: StunStateStopped,
-		fsm:   make(chan int, 1),
+		event: make(chan int, 1),
 		quit:  make(chan int, 2),
 	}, nil
 }
@@ -63,13 +63,13 @@ func (sc *StunClient) Start(address string) error {
 	}
 	go func() {
 		for {
-			msg := <-sc.fsm
+			msg := <-sc.event
 			sc.transition(msg)
 		}
 	}()
 	go sc.keepAlive()
 	go sc.refreshSessionTable()
-	sc.fsm <- StunTransitionBinding
+	sc.event <- StunTransitionBinding
 	return nil
 }
 
@@ -107,7 +107,7 @@ func (sc *StunClient) sendRefreshSessionTableRequest() {
 	})
 	if err := sc.client.Start(sc.refreshMessage(), deadline, handler); err != nil {
 		log.Println("sendRefreshSessionTableRequest failed:", err)
-		sc.fsm <- StunTransitionBindError
+		sc.event <- StunTransitionBindError
 	}
 }
 
@@ -146,7 +146,7 @@ func (sc *StunClient) sendKeepAliveMessage() {
 	})
 	if err := sc.client.Start(sc.bindMessage(), deadline, handler); err != nil {
 		log.Println("Binding failed:", err)
-		sc.fsm <- StunTransitionBindError
+		sc.event <- StunTransitionBindError
 	}
 }
 
@@ -181,14 +181,14 @@ func (sc *StunClient) transitionBinding() {
 		deadline := time.Now().Add(stunReplyTimeout)
 		handler := stun.HandlerFunc(func(e stun.Event) {
 			if e.Error == stun.ErrTransactionTimeOut {
-				sc.fsm <- StunTransitionBindError
+				sc.event <- StunTransitionBindError
 			} else if e.Error != nil {
 				log.Println("Got error", e.Error)
 			} else if e.Message == nil {
 				log.Println("Empty message")
 			} else if err := validateMessage(e.Message, &stun.BindingSuccess); err != nil {
 				log.Println("Invalid response message:", err)
-				sc.fsm <- StunTransitionBindError
+				sc.event <- StunTransitionBindError
 			} else {
 				var xorAddr stun.XORMappedAddress
 				if err = xorAddr.GetFrom(e.Message); err != nil {
@@ -196,12 +196,12 @@ func (sc *StunClient) transitionBinding() {
 				} else {
 					log.Println("Mapped address", xorAddr)
 				}
-				sc.fsm <- StunTransitionBindSuccess
+				sc.event <- StunTransitionBindSuccess
 			}
 		})
 		if err := sc.client.Start(sc.bindMessage(), deadline, handler); err != nil {
 			log.Printf("Binding failed: %v", err)
-			sc.fsm <- StunTransitionBindError
+			sc.event <- StunTransitionBindError
 		}
 	default:
 		log.Println("Cannot do Binding transition at state", sc.State)
@@ -230,7 +230,7 @@ func (sc *StunClient) transitionBindSuccess() {
 func (sc *StunClient) transitionBindError() {
 	if sc.State == StunStateRegistering {
 		sc.setState(StunStateRegistrationFailed)
-		sc.fsm <- StunTransitionReset
+		sc.event <- StunTransitionReset
 	} else {
 		log.Println("Cannot do BindError transition at state", sc.State)
 	}
@@ -246,7 +246,7 @@ func (sc *StunClient) transitionReset() {
 }
 
 func (sc *StunClient) Stop() error {
-	sc.fsm <- StunTransitionStop
+	sc.event <- StunTransitionStop
 	sc.quit <- 1
 	return nil
 }
