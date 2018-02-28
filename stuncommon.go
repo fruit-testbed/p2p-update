@@ -26,21 +26,21 @@ var (
 	errNonSTUNMessage = errors.New("Not STUN Message")
 )
 
-func ValidateMessage(m *stun.Message, t *stun.MessageType) error {
+func validateMessage(m *stun.Message, t *stun.MessageType) error {
 	var (
 		soft stun.Software
 		err  error
 	)
 
 	if t != nil && (m.Type.Method != t.Method || m.Type.Class != t.Class) {
-		return errors.New(fmt.Sprintf("incorrect message type, expected %v but got %v",
-			*t, m.Type))
+		return fmt.Errorf("incorrect message type, expected %v but got %v",
+			*t, m.Type)
 	}
 
 	if err = soft.GetFrom(m); err != nil {
 		return err
 	} else if soft.String() != stunSoftware.String() {
-		return errors.New(fmt.Sprintf("Invalid software: %s", soft.String()))
+		return fmt.Errorf("Invalid software: %s", soft.String())
 	}
 
 	var username stun.Username
@@ -49,12 +49,12 @@ func ValidateMessage(m *stun.Message, t *stun.MessageType) error {
 	}
 
 	if err = stun.Fingerprint.Check(m); err != nil {
-		return errors.New(fmt.Sprintf("fingerprint is incorrect: %v", err))
+		return fmt.Errorf("fingerprint is incorrect: %v", err)
 	}
 
 	i := stun.NewShortTermIntegrity(stunPassword)
 	if err = i.Check(m); err != nil {
-		return errors.New(fmt.Sprintf("Integrity bad: %v", err))
+		return fmt.Errorf("Integrity bad: %v", err)
 	}
 
 	return nil
@@ -80,20 +80,23 @@ func piSerial() (string, error) {
 }
 
 func getActiveMacAddress() (string, error) {
-	if interfaces, err := net.Interfaces(); err != nil {
+	var (
+		ifaces []net.Interface
+		err    error
+	)
+	if ifaces, err = net.Interfaces(); err != nil {
 		return "", err
-	} else {
-		for _, i := range interfaces {
-			if i.Flags&net.FlagUp != 0 && bytes.Compare(i.HardwareAddr, nil) != 0 {
-				// Don't use random as we have a real address
-				return i.HardwareAddr.String(), nil
-			}
+	}
+	for _, i := range ifaces {
+		if i.Flags&net.FlagUp != 0 && bytes.Compare(i.HardwareAddr, nil) != 0 {
+			// Don't use random as we have a real address
+			return i.HardwareAddr.String(), nil
 		}
 	}
 	return "", errors.New("No active ethernet available")
 }
 
-func localId() (string, error) {
+func localID() (string, error) {
 	if serial, err := piSerial(); err == nil {
 		return serial, nil
 	}

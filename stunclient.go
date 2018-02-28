@@ -30,7 +30,7 @@ const (
 )
 
 type StunClient struct {
-	Id     string
+	ID     string
 	client *stun.Client
 	State  StunState
 	fsm    chan int
@@ -41,11 +41,11 @@ func NewStunClient() (*StunClient, error) {
 		id  string
 		err error
 	)
-	if id, err = localId(); err != nil {
+	if id, err = localID(); err != nil {
 		return nil, errors.Wrap(err, "Cannot get local id")
 	}
 	return &StunClient{
-		Id:    id,
+		ID:    id,
 		State: StunStateStopped,
 		fsm:   make(chan int, 1),
 	}, nil
@@ -80,12 +80,12 @@ func (sc *StunClient) keepAlive() {
 		time.Sleep(sleepTime)
 		switch sc.State {
 		case StunStateRegistered:
-			if counter += 1; counter > stunKeepAliveTimeout {
+			if counter++; counter > stunKeepAliveTimeout {
 				deadline := time.Now().Add(stunReplyTimeout)
 				handler := stun.HandlerFunc(func(e stun.Event) {
 					if e.Error != nil {
 						log.Println("Failed sent keep-alive packet to STUN server:", e.Error)
-					} else if e.Message == nil || ValidateMessage(e.Message, &stun.BindingSuccess) != nil {
+					} else if e.Message == nil || validateMessage(e.Message, &stun.BindingSuccess) != nil {
 						log.Println("Failed sent keep-alive packet to STUN server: invalid message")
 					}
 				})
@@ -136,7 +136,7 @@ func (sc *StunClient) transitionBinding() {
 			} else if e.Error != nil {
 				log.Println("Got error", e.Error)
 			} else if e.Message != nil {
-				if err := ValidateMessage(e.Message, &stun.BindingSuccess); err != nil {
+				if err := validateMessage(e.Message, &stun.BindingSuccess); err != nil {
 					log.Println("Invalid response message:", err)
 					sc.fsm <- StunTransitionBindError
 				} else {
@@ -155,7 +155,7 @@ func (sc *StunClient) transitionBinding() {
 			sc.fsm <- StunTransitionBindError
 		}
 	default:
-		log.Printf("Cannot do Binding transition at state", sc.State)
+		log.Println("Cannot do Binding transition at state", sc.State)
 		return
 	}
 }
@@ -174,7 +174,7 @@ func (sc *StunClient) transitionBindSuccess() {
 	if sc.State == StunStateRegistering {
 		sc.setState(StunStateRegistered)
 	} else {
-		log.Printf("Cannot do BindSuccess transition at state", sc.State)
+		log.Println("Cannot do BindSuccess transition at state", sc.State)
 	}
 }
 
@@ -183,7 +183,7 @@ func (sc *StunClient) transitionBindError() {
 		sc.setState(StunStateRegistrationFailed)
 		sc.fsm <- StunTransitionReset
 	} else {
-		log.Printf("Cannot do BindError transition at state", sc.State)
+		log.Println("Cannot do BindError transition at state", sc.State)
 	}
 }
 
@@ -192,7 +192,7 @@ func (sc *StunClient) transitionReset() {
 		// TODO: do necessary clean up here
 		sc.setState(StunStateStopped)
 	} else {
-		log.Printf("Cannot do Reset transition at state", sc.State)
+		log.Println("Cannot do Reset transition at state", sc.State)
 	}
 }
 
@@ -206,7 +206,7 @@ func (sc *StunClient) bindMessage() *stun.Message {
 		stun.TransactionID,
 		stun.NewType(stun.MethodBinding, stun.ClassRequest),
 		stunSoftware,
-		stun.NewUsername(sc.Id),
+		stun.NewUsername(sc.ID),
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
 	)

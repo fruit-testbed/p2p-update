@@ -11,30 +11,30 @@ import (
 )
 
 type Peer struct {
-	Id   string
+	ID   string
 	IP   net.IP
 	Port int
 }
 
 func (p *Peer) String() string {
-	return fmt.Sprintf("%s[%v[%d]]", p.Id, p.IP, p.Port)
+	return fmt.Sprintf("%s[%v[%d]]", p.ID, p.IP, p.Port)
 }
 
 type StunServer struct {
 	Address string
-	Id      string
+	ID      string
 	peers   map[string]*Peer
 }
 
 func NewStunServer(address string) (*StunServer, error) {
 	var id string
 	var err error
-	if id, err = localId(); err != nil {
-		return nil, errors.Wrap(err, "Cannot get local id")
+	if id, err = localID(); err != nil {
+		return nil, errors.Wrap(err, "Cannot get local ID")
 	}
 	return &StunServer{
 		Address: address,
-		Id:      id,
+		ID:      id,
 		peers:   make(map[string]*Peer),
 	}, nil
 }
@@ -46,7 +46,7 @@ func (s *StunServer) run(wg *sync.WaitGroup) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Serving at %s with id:%s", s.Address, s.Id)
+	log.Printf("Serving at %s with id:%s", s.Address, s.ID)
 	s.serve(conn)
 	return nil
 }
@@ -63,7 +63,6 @@ func (s *StunServer) serve(c net.PacketConn) error {
 		res.Reset()
 		req.Reset()
 	}
-	return nil
 }
 
 func (s *StunServer) serveConn(c net.PacketConn, res, req *stun.Message) error {
@@ -106,7 +105,7 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
 		return false, errors.Wrap(err, "Failed to read message")
 	}
 
-	if err := ValidateMessage(req, nil); err != nil {
+	if err := validateMessage(req, nil); err != nil {
 		return false, errors.Wrap(err, "Invalid message")
 	}
 
@@ -127,14 +126,14 @@ func (s *StunServer) replyPing(addr net.Addr, req, res *stun.Message) error {
 	case *net.UDPAddr:
 		log.Printf("Received ping from peer %v[%d]", peer.IP, peer.Port)
 	default:
-		return errors.New(fmt.Sprintf("unknown addr: %v", addr))
+		return fmt.Errorf("unknown addr: %v", addr)
 	}
 
 	return res.Build(
 		stun.NewTransactionIDSetter(req.TransactionID),
 		stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse),
 		stunSoftware,
-		stun.NewUsername(s.Id),
+		stun.NewUsername(s.ID),
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
 	)
@@ -149,13 +148,13 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) error {
 	p := &Peer{}
 	switch peer := addr.(type) {
 	case *net.UDPAddr:
-		p.Id = username.String()
+		p.ID = username.String()
 		p.IP = peer.IP
 		p.Port = peer.Port
-		s.peers[p.Id] = p
+		s.peers[p.ID] = p
 		log.Printf("Registered peer %s", p.String())
 	default:
-		return errors.New(fmt.Sprintf("unknown addr: %v", addr))
+		return fmt.Errorf("unknown addr: %v", addr)
 	}
 	return res.Build(
 		stun.NewTransactionIDSetter(req.TransactionID),
@@ -165,7 +164,7 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) error {
 			IP:   p.IP,
 			Port: p.Port,
 		},
-		stun.NewUsername(s.Id),
+		stun.NewUsername(s.ID),
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
 	)
