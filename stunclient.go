@@ -1,9 +1,9 @@
 package main
 
 import (
-	"time"
-	"log"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/gortc/stun"
 	"github.com/pkg/errors"
@@ -12,40 +12,42 @@ import (
 type StunState uint16
 
 const (
-	StunStateStopped StunState = 0x000
-	StunStateRegistering StunState = 0x001
-	StunStateRegistered StunState = 0x002
+	StunStateStopped            StunState = 0x000
+	StunStateRegistering        StunState = 0x001
+	StunStateRegistered         StunState = 0x002
 	StunStateRegistrationFailed StunState = 0x003
-	StunStateConnected StunState = 0x004
+	StunStateConnected          StunState = 0x004
+)
 
-	StunTransitionBinding = 1
+const (
+	StunTransitionBinding     = 1
 	StunTransitionBindSuccess = 2
-	StunTransitionBindError = 3
-	StunTransitionReset = 4
-	StunTransitionStop = 5
-	StunTransitionPeer = 6
-	StunTransitionNoPeer = 7
+	StunTransitionBindError   = 3
+	StunTransitionReset       = 4
+	StunTransitionStop        = 5
+	StunTransitionPeer        = 6
+	StunTransitionNoPeer      = 7
 )
 
 type StunClient struct {
-	Id string
+	Id     string
 	client *stun.Client
-	State StunState
-	fsm chan int
+	State  StunState
+	fsm    chan int
 }
 
 func NewStunClient() (*StunClient, error) {
 	var (
-		id string
+		id  string
 		err error
 	)
 	if id, err = localId(); err != nil {
 		return nil, errors.Wrap(err, "Cannot get local id")
 	}
-	return &StunClient {
-		Id: id,
+	return &StunClient{
+		Id:    id,
 		State: StunStateStopped,
-		fsm: make(chan int, 1),
+		fsm:   make(chan int, 1),
 	}, nil
 }
 
@@ -59,7 +61,7 @@ func (sc *StunClient) Start(address string) error {
 	}
 	go func() {
 		for {
-			msg := <- sc.fsm
+			msg := <-sc.fsm
 			sc.transition(msg)
 		}
 	}()
@@ -72,7 +74,7 @@ func (sc *StunClient) keepAlive() {
 	// Some applications send a keep-alive packet every 60 seconds. Here we set 30 seconds.
 	// reference: https://stackoverflow.com/q/13501288
 	sleepTime := 1000 * time.Millisecond // 1 second
-	stunKeepAliveTimeout := 30 // in seconds
+	stunKeepAliveTimeout := 30           // in seconds
 	counter := 0
 	for {
 		time.Sleep(sleepTime)
@@ -159,13 +161,13 @@ func (sc *StunClient) transitionBinding() {
 }
 
 func (sc *StunClient) transitionStop() {
-		switch sc.State {
-		case StunStateStopped:
-		case StunStateRegistering, StunStateRegistered, StunStateConnected:
-			sc.setState(StunStateStopped)
-		default:
-			log.Println("Cannot do Stop transition at state", sc.State)
-		}
+	switch sc.State {
+	case StunStateStopped:
+	case StunStateRegistering, StunStateRegistered, StunStateConnected:
+		sc.setState(StunStateStopped)
+	default:
+		log.Println("Cannot do Stop transition at state", sc.State)
+	}
 }
 
 func (sc *StunClient) transitionBindSuccess() {

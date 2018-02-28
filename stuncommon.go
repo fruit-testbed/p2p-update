@@ -1,61 +1,63 @@
 package main
 
 import (
-  "fmt"
-  "net"
-  "bytes"
-  "os"
-  "bufio"
-  "strings"
-  "time"
+	"bufio"
+	"bytes"
+	"fmt"
+	"net"
+	"os"
+	"strings"
+	"time"
 
-  "github.com/gortc/stun"
-  "github.com/pkg/errors"
+	"github.com/gortc/stun"
+	"github.com/pkg/errors"
 )
 
 var (
-  stunRealm = "fruit-testbed.org"
-  stunSoftware = stun.NewSoftware("fruit/p2psecureupdate")
-  stunPassword = "123"
+	stunRealm    = "fruit-testbed.org"
+	stunSoftware = stun.NewSoftware("fruit/p2psecureupdate")
+	stunPassword = "123"
 
-  stunTypeRefreshRequest = stun.NewType(stun.MethodRefresh, stun.ClassRequest)
-  stunTypeRefreshSuccess = stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse)
+	stunTypeRefreshRequest = stun.NewType(stun.MethodRefresh, stun.ClassRequest)
+	stunTypeRefreshSuccess = stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse)
 
-  stunReplyTimeout = time.Second * 5
+	stunReplyTimeout = time.Second * 5
 
-  errNonSTUNMessage = errors.New("Not STUN Message")
+	errNonSTUNMessage = errors.New("Not STUN Message")
 )
 
 func ValidateMessage(m *stun.Message, t *stun.MessageType) error {
-  var soft stun.Software
-  var err error
+	var (
+		soft stun.Software
+		err  error
+	)
 
-  if t != nil && (m.Type.Method != t.Method || m.Type.Class != t.Class) {
-    return errors.New(fmt.Sprintf("incorrect message type, expected %v but got %v",
-        *t, m.Type))
-  }
+	if t != nil && (m.Type.Method != t.Method || m.Type.Class != t.Class) {
+		return errors.New(fmt.Sprintf("incorrect message type, expected %v but got %v",
+			*t, m.Type))
+	}
 
-  if err = soft.GetFrom(m); err != nil {
-    return err
-  } else if soft.String() != stunSoftware.String() {
-    return errors.New(fmt.Sprintf("Invalid software: %s", soft.String()))
-  }
+	if err = soft.GetFrom(m); err != nil {
+		return err
+	} else if soft.String() != stunSoftware.String() {
+		return errors.New(fmt.Sprintf("Invalid software: %s", soft.String()))
+	}
 
-  var username stun.Username
-  if err = username.GetFrom(m); err != nil {
-    return err
-  }
+	var username stun.Username
+	if err = username.GetFrom(m); err != nil {
+		return err
+	}
 
-  if err = stun.Fingerprint.Check(m); err != nil {
-    return errors.New(fmt.Sprintf("fingerprint is incorrect: %v", err))
-  }
+	if err = stun.Fingerprint.Check(m); err != nil {
+		return errors.New(fmt.Sprintf("fingerprint is incorrect: %v", err))
+	}
 
-  i := stun.NewShortTermIntegrity(stunPassword)
-  if err = i.Check(m); err != nil {
-    return errors.New(fmt.Sprintf("Integrity bad: %v", err))
-  }
+	i := stun.NewShortTermIntegrity(stunPassword)
+	if err = i.Check(m); err != nil {
+		return errors.New(fmt.Sprintf("Integrity bad: %v", err))
+	}
 
-  return nil
+	return nil
 }
 
 func piSerial() (string, error) {
@@ -79,8 +81,8 @@ func piSerial() (string, error) {
 
 func getActiveMacAddress() (string, error) {
 	if interfaces, err := net.Interfaces(); err != nil {
-    return "", err
-  } else {
+		return "", err
+	} else {
 		for _, i := range interfaces {
 			if i.Flags&net.FlagUp != 0 && bytes.Compare(i.HardwareAddr, nil) != 0 {
 				// Don't use random as we have a real address
@@ -95,11 +97,11 @@ func localId() (string, error) {
 	if serial, err := piSerial(); err == nil {
 		return serial, nil
 	}
-  if mac, err := getActiveMacAddress(); err == nil {
+	if mac, err := getActiveMacAddress(); err == nil {
 		return strings.Replace(mac, ":", "", -1), nil
 	}
-  if hostname, err := os.Hostname(); err == nil {
-    return hostname, nil
-  }
-  return "", errors.New("CPU serial, active ethernet, and hostname are not available")
+	if hostname, err := os.Hostname(); err == nil {
+		return hostname, nil
+	}
+	return "", errors.New("CPU serial, active ethernet, and hostname are not available")
 }
