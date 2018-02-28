@@ -34,6 +34,7 @@ type StunClient struct {
 	client *stun.Client
 	State  StunState
 	fsm    chan int
+	quit   chan int
 }
 
 func NewStunClient() (*StunClient, error) {
@@ -48,6 +49,7 @@ func NewStunClient() (*StunClient, error) {
 		ID:    id,
 		State: StunStateStopped,
 		fsm:   make(chan int, 1),
+		quit:  make(chan int, 2),
 	}, nil
 }
 
@@ -73,19 +75,22 @@ func (sc *StunClient) Start(address string) error {
 func (sc *StunClient) keepAlive() {
 	// Some applications send a keep-alive packet every 60 seconds. Here we set 30 seconds.
 	// reference: https://stackoverflow.com/q/13501288
-	sleepTime := 1000 * time.Millisecond // 1 second
-	stunKeepAliveTimeout := 30           // in seconds
+	stunKeepAliveTimeout := 30 // in seconds
 	counter := 0
+	log.Println("Starting keep alive thread")
 	for {
-		time.Sleep(sleepTime)
-		switch sc.State {
-		case StunStateRegistered:
-			if counter++; counter > stunKeepAliveTimeout {
+		select {
+		case <-sc.quit:
+			log.Println("quit")
+			return
+		case <-time.After(time.Second):
+			if sc.State != StunStateRegistered {
+				counter = 0
+			} else if counter++; counter > stunKeepAliveTimeout {
 				sc.sendKeepAliveMessage()
 				counter = 0
 			}
-		default:
-			counter = 0
+
 		}
 	}
 }
@@ -202,6 +207,7 @@ func (sc *StunClient) transitionReset() {
 
 func (sc *StunClient) Stop() error {
 	sc.fsm <- StunTransitionStop
+	sc.quit <- 1
 	return nil
 }
 
