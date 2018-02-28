@@ -10,20 +10,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Peer struct {
-	ID   string
-	IP   net.IP
-	Port int
-}
-
-func (p *Peer) String() string {
-	return fmt.Sprintf("%s[%v[%d]]", p.ID, p.IP, p.Port)
-}
-
 type StunServer struct {
 	Address string
 	ID      string
-	peers   map[string]*Peer
+	peers   SessionTable
 }
 
 func NewStunServer(address string) (*StunServer, error) {
@@ -35,7 +25,7 @@ func NewStunServer(address string) (*StunServer, error) {
 	return &StunServer{
 		Address: address,
 		ID:      id,
-		peers:   make(map[string]*Peer),
+		peers:   make(SessionTable),
 	}, nil
 }
 
@@ -111,7 +101,7 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
 
 	if req.Type.Method == stun.MethodRefresh &&
 		req.Type.Class == stun.ClassRequest {
-		return true, s.replyPing(addr, req, res)
+		return true, s.sendSessionTable(addr, req, res)
 	} else if req.Type.Method == stun.MethodBinding &&
 		req.Type.Class == stun.ClassRequest {
 		return true, s.registerPeer(addr, req, res)
@@ -119,6 +109,19 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
 	log.Printf("not replying: %v", *req)
 
 	return false, nil
+}
+
+func (s *StunServer) sendSessionTable(addr net.Addr, req, res *stun.Message) error {
+	log.Println("Receive refreshSessionTable request")
+	return res.Build(
+		stun.NewTransactionIDSetter(req.TransactionID),
+		stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse),
+		stunSoftware,
+		stun.NewUsername(s.ID),
+		s.peers,
+		stun.NewShortTermIntegrity(stunPassword),
+		stun.Fingerprint,
+	)
 }
 
 func (s *StunServer) replyPing(addr net.Addr, req, res *stun.Message) error {
@@ -145,14 +148,15 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) error {
 	if err := username.GetFrom(req); err != nil {
 		return errors.Wrap(err, "Failed to read peer ID")
 	}
-	p := &Peer{}
+	id := username.String()
 	switch peer := addr.(type) {
 	case *net.UDPAddr:
-		p.ID = username.String()
-		p.IP = peer.IP
-		p.Port = peer.Port
-		s.peers[p.ID] = p
-		log.Printf("Registered peer %s", p.String())
+		s.peers[id] = Peer{
+			ID:   id,
+			IP:   peer.IP,
+			Port: peer.Port,
+		}
+		log.Printf("Registered peer %s", s.peers[id].String())
 	default:
 		return fmt.Errorf("unknown addr: %v", addr)
 	}
@@ -161,8 +165,8 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) error {
 		stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
 		stunSoftware,
 		&stun.XORMappedAddress{
-			IP:   p.IP,
-			Port: p.Port,
+			IP:   s.peers[id].IP,
+			Port: s.peers[id].Port,
 		},
 		stun.NewUsername(s.ID),
 		stun.NewShortTermIntegrity(stunPassword),

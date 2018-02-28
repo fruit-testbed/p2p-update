@@ -11,6 +11,7 @@ import (
 
 	"github.com/gortc/stun"
 	"github.com/pkg/errors"
+	"github.com/vmihailenco/msgpack"
 )
 
 var (
@@ -25,6 +26,52 @@ var (
 
 	errNonSTUNMessage = errors.New("Not STUN Message")
 )
+
+type Peer struct {
+	ID   string
+	IP   net.IP
+	Port int
+}
+
+func (p Peer) String() string {
+	return fmt.Sprintf("%s[%v[%d]]", p.ID, p.IP, p.Port)
+}
+
+type SessionTable map[string]Peer
+
+func (st SessionTable) marshal() ([]byte, error) {
+	return msgpack.Marshal(&st)
+}
+
+func (st SessionTable) AddTo(m *stun.Message) error {
+	var (
+		data []byte
+		err  error
+	)
+	if data, err = st.marshal(); err == nil {
+		m.Add(stun.AttrData, data)
+	}
+	return err
+}
+
+func getSessionTable(m *stun.Message) (SessionTable, error) {
+	var (
+		data []byte
+		err  error
+	)
+	if data, err = m.Get(stun.AttrData); err == nil {
+		return unmarshalSessionTable(data)
+	}
+	return nil, err
+}
+
+func unmarshalSessionTable(raw []byte) (SessionTable, error) {
+	var st SessionTable
+	if err := msgpack.Unmarshal(raw, &st); err != nil {
+		return nil, err
+	}
+	return st, nil
+}
 
 func validateMessage(m *stun.Message, t *stun.MessageType) error {
 	var (

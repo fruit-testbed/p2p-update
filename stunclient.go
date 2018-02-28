@@ -68,8 +68,47 @@ func (sc *StunClient) Start(address string) error {
 		}
 	}()
 	go sc.keepAlive()
+	go sc.refreshSessionTable()
 	sc.fsm <- StunTransitionBinding
 	return nil
+}
+
+func (sc *StunClient) refreshSessionTable() {
+	log.Println("Started refreshSessionTable thread")
+	for {
+		select {
+		case <-sc.quit:
+			log.Println("Stopped refreshSessionTable thread")
+		case <-time.After(1 * time.Second):
+			sc.sendRefreshSessionTableRequest()
+		}
+	}
+}
+
+func (sc *StunClient) sendRefreshSessionTableRequest() {
+	deadline := time.Now().Add(stunReplyTimeout)
+	handler := stun.HandlerFunc(func(e stun.Event) {
+		msgType := stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse)
+		if e.Error != nil {
+			log.Println("Failed sent refreshSessionTable request to STUN server:", e.Error)
+		} else if e.Message == nil {
+			log.Println("Received an empty message")
+		} else if err := validateMessage(e.Message, &msgType); err != nil {
+			log.Println("Failed sent keep-alive packet to STUN server: invalid message:", err)
+		} else {
+			// TODO: extract server's session-table then save it locally
+			st, err := getSessionTable(e.Message)
+			if err == nil {
+				log.Println("Got session table:", st)
+			} else {
+				log.Println("Failed extracting session-table:", err, e.Message)
+			}
+		}
+	})
+	if err := sc.client.Start(sc.refreshMessage(), deadline, handler); err != nil {
+		log.Println("sendRefreshSessionTableRequest failed:", err)
+		sc.fsm <- StunTransitionBindError
+	}
 }
 
 func (sc *StunClient) keepAlive() {
@@ -77,11 +116,11 @@ func (sc *StunClient) keepAlive() {
 	// reference: https://stackoverflow.com/q/13501288
 	stunKeepAliveTimeout := 30 // in seconds
 	counter := 0
-	log.Println("Starting keep alive thread")
+	log.Println("Started keep alive thread")
 	for {
 		select {
 		case <-sc.quit:
-			log.Println("quit")
+			log.Println("Stopped keep alive thread")
 			return
 		case <-time.After(time.Second):
 			if sc.State != StunStateRegistered {
@@ -90,7 +129,6 @@ func (sc *StunClient) keepAlive() {
 				sc.sendKeepAliveMessage()
 				counter = 0
 			}
-
 		}
 	}
 }
@@ -215,6 +253,17 @@ func (sc *StunClient) bindMessage() *stun.Message {
 	return stun.MustBuild(
 		stun.TransactionID,
 		stun.NewType(stun.MethodBinding, stun.ClassRequest),
+		stunSoftware,
+		stun.NewUsername(sc.ID),
+		stun.NewShortTermIntegrity(stunPassword),
+		stun.Fingerprint,
+	)
+}
+
+func (sc *StunClient) refreshMessage() *stun.Message {
+	return stun.MustBuild(
+		stun.TransactionID,
+		stun.NewType(stun.MethodRefresh, stun.ClassRequest),
 		stunSoftware,
 		stun.NewUsername(sc.ID),
 		stun.NewShortTermIntegrity(stunPassword),
