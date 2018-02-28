@@ -81,23 +81,27 @@ func (sc *StunClient) keepAlive() {
 		switch sc.State {
 		case StunStateRegistered:
 			if counter++; counter > stunKeepAliveTimeout {
-				deadline := time.Now().Add(stunReplyTimeout)
-				handler := stun.HandlerFunc(func(e stun.Event) {
-					if e.Error != nil {
-						log.Println("Failed sent keep-alive packet to STUN server:", e.Error)
-					} else if e.Message == nil || validateMessage(e.Message, &stun.BindingSuccess) != nil {
-						log.Println("Failed sent keep-alive packet to STUN server: invalid message")
-					}
-				})
-				if err := sc.client.Start(sc.bindMessage(), deadline, handler); err != nil {
-					log.Printf("Binding failed: %v", err)
-					sc.fsm <- StunTransitionBindError
-				}
+				sc.sendKeepAliveMessage()
 				counter = 0
 			}
 		default:
 			counter = 0
 		}
+	}
+}
+
+func (sc *StunClient) sendKeepAliveMessage() {
+	deadline := time.Now().Add(stunReplyTimeout)
+	handler := stun.HandlerFunc(func(e stun.Event) {
+		if e.Error != nil {
+			log.Println("Failed sent keep-alive packet to STUN server:", e.Error)
+		} else if e.Message == nil || validateMessage(e.Message, &stun.BindingSuccess) != nil {
+			log.Println("Failed sent keep-alive packet to STUN server: invalid message")
+		}
+	})
+	if err := sc.client.Start(sc.bindMessage(), deadline, handler); err != nil {
+		log.Println("Binding failed:", err)
+		sc.fsm <- StunTransitionBindError
 	}
 }
 
