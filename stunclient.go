@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"time"
 
 	"github.com/gortc/stun"
@@ -13,8 +14,13 @@ import (
 type StunClient struct {
 	ID     string
 	client *stun.Client
-	fsm    *fsm.FSM
-	quit   chan int
+
+	extIP   net.IP
+	extPort int
+	session SessionTable
+
+	fsm  *fsm.FSM
+	quit chan int
 }
 
 func NewStunClient() (*StunClient, error) {
@@ -27,7 +33,7 @@ func NewStunClient() (*StunClient, error) {
 	}
 	sc := &StunClient{
 		ID:   id,
-		quit: make(chan int, 2),
+		quit: make(chan int, 1),
 	}
 	sc.createFSM()
 	return sc, nil
@@ -46,11 +52,11 @@ func (sc *StunClient) createFSM() {
 			{Name: "noPeerData", Src: []string{"connected"}, Dst: "registered"},
 		},
 		fsm.Callbacks{
-			"bind":        sc.callbackBind,
-			"stop":        noop,
+			"bind":        func(*fsm.Event) { sc.bind() },
+			"stop":        func(*fsm.Event) { sc.reset() },
 			"bindSuccess": noop,
-			"bindError":   sc.callbackBindError,
-			"reset":       noop,
+			"bindError":   noop,
+			"reset":       func(*fsm.Event) { sc.reset() },
 			"peerData":    noop,
 			"noPeerData":  noop,
 		},
@@ -66,90 +72,33 @@ func (sc *StunClient) Start(address string) error {
 		return errors.Wrap(err, fmt.Sprintf("Failed dialing the server: %v", err))
 	}
 	go sc.keepAlive()
-	go sc.refreshSessionTable()
 	return sc.fsm.Event("bind")
-}
-
-func (sc *StunClient) refreshSessionTable() {
-	log.Println("Started refreshSessionTable thread")
-	for {
-		select {
-		case <-sc.quit:
-			log.Println("Stopped refreshSessionTable thread")
-		case <-time.After(30 * time.Second):
-			sc.sendRefreshSessionTableRequest()
-		}
-	}
-}
-
-func (sc *StunClient) sendRefreshSessionTableRequest() {
-	deadline := time.Now().Add(stunReplyTimeout)
-	handler := stun.HandlerFunc(func(e stun.Event) {
-		msgType := stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse)
-		if e.Error != nil {
-			log.Println("Failed sent refreshSessionTable request to STUN server:", e.Error)
-		} else if e.Message == nil {
-			log.Println("Received an empty message")
-		} else if err := validateMessage(e.Message, &msgType); err != nil {
-			log.Println("Failed sent keep-alive packet to STUN server: invalid message:", err)
-		} else {
-			// TODO: extract server's session-table then save it locally
-			st, err := getSessionTable(e.Message)
-			if err == nil {
-				log.Println("Got session table:", st)
-			} else {
-				log.Println("Failed extracting session-table:", err, e.Message)
-			}
-		}
-	})
-	if err := sc.client.Start(sc.refreshMessage(), deadline, handler); err != nil {
-		log.Println("sendRefreshSessionTableRequest failed:", err)
-		sc.fsm.Event("bindError")
-	}
 }
 
 func (sc *StunClient) keepAlive() {
 	// Some applications send a keep-alive packet every 60 seconds. Here we set 30 seconds.
 	// reference: https://stackoverflow.com/q/13501288
-	stunKeepAliveTimeout := 30 // in seconds
-	counter := 0
 	log.Println("Started keep alive thread")
 	for {
 		select {
 		case <-sc.quit:
 			log.Println("Stopped keep alive thread")
 			return
-		case <-time.After(time.Second):
-			if sc.fsm.Current() != "registered" {
-				counter = 0
-			} else if counter++; counter > stunKeepAliveTimeout {
-				sc.sendKeepAliveMessage()
-				counter = 0
+		case <-time.After(30 * time.Second):
+			if sc.fsm.Current() == "registered" {
+				sc.bind()
 			}
 		}
 	}
 }
 
-func (sc *StunClient) sendKeepAliveMessage() {
+func (sc *StunClient) bind() {
 	deadline := time.Now().Add(stunReplyTimeout)
 	handler := stun.HandlerFunc(func(e stun.Event) {
-		if e.Error != nil {
-			log.Println("Failed sent keep-alive packet to STUN server:", e.Error)
-		} else if e.Message == nil {
-			log.Println("Failed sent keep-alive packet to STUN server: empty message")
-		} else if err := validateMessage(e.Message, &stun.BindingSuccess); err != nil {
-			log.Println("Failed sent keep-alive packet to STUN server: invalid message -", err)
-		}
-	})
-	if err := sc.client.Start(sc.bindMessage(), deadline, handler); err != nil {
-		log.Println("Binding failed:", err)
-		sc.fsm.Event("bindError")
-	}
-}
-
-func (sc *StunClient) callbackBind(*fsm.Event) {
-	deadline := time.Now().Add(stunReplyTimeout)
-	handler := stun.HandlerFunc(func(e stun.Event) {
+		var (
+			xorAddr stun.XORMappedAddress
+			st      SessionTable
+		)
 		if e.Error == stun.ErrTransactionTimeOut {
 			sc.fsm.Event("bindError")
 		} else if e.Error != nil {
@@ -159,15 +108,18 @@ func (sc *StunClient) callbackBind(*fsm.Event) {
 		} else if err := validateMessage(e.Message, &stun.BindingSuccess); err != nil {
 			log.Println("Invalid response message:", err)
 			sc.fsm.Event("bindError")
+		} else if err = xorAddr.GetFrom(e.Message); err != nil {
+			log.Println("Failed getting mapped address:", err)
+		} else if st, err = getSessionTable(e.Message); err != nil {
+			log.Println("Failed extracting session-table:", err, e.Message)
 		} else {
-			var xorAddr stun.XORMappedAddress
-			if err = xorAddr.GetFrom(e.Message); err != nil {
-				log.Println("Failed getting mapped address:", err)
-			} else {
-				log.Println("Mapped address", xorAddr)
-			}
+			delete(st, sc.ID)
+			sc.extIP, sc.extPort, sc.session = xorAddr.IP, xorAddr.Port, st
+			log.Println("mapped-address:", xorAddr, "- session-table:", st)
 			sc.fsm.Event("bindSuccess")
+			return
 		}
+		sc.fsm.Event("bindError")
 	})
 	if err := sc.client.Start(sc.bindMessage(), deadline, handler); err != nil {
 		log.Printf("Binding failed: %v", err)
@@ -175,35 +127,23 @@ func (sc *StunClient) callbackBind(*fsm.Event) {
 	}
 }
 
-func (sc *StunClient) callbackBindError(*fsm.Event) {
-	sc.fsm.Event("reset")
+func (sc *StunClient) reset() {
+	sc.quit <- 1
+	sc.extIP = nil
+	sc.extPort = 0
+	sc.session = nil
 }
 
 func noop(*fsm.Event) {}
 
 func (sc *StunClient) Stop() error {
-	if err := sc.fsm.Event("stop"); err != nil {
-		return err
-	}
-	sc.quit <- 1
-	return nil
+	return sc.fsm.Event("stop")
 }
 
 func (sc *StunClient) bindMessage() *stun.Message {
 	return stun.MustBuild(
 		stun.TransactionID,
 		stun.NewType(stun.MethodBinding, stun.ClassRequest),
-		stunSoftware,
-		stun.NewUsername(sc.ID),
-		stun.NewShortTermIntegrity(stunPassword),
-		stun.Fingerprint,
-	)
-}
-
-func (sc *StunClient) refreshMessage() *stun.Message {
-	return stun.MustBuild(
-		stun.TransactionID,
-		stun.NewType(stun.MethodRefresh, stun.ClassRequest),
 		stunSoftware,
 		stun.NewUsername(sc.ID),
 		stun.NewShortTermIntegrity(stunPassword),

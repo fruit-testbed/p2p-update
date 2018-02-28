@@ -99,47 +99,12 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
 		return false, errors.Wrap(err, "Invalid message")
 	}
 
-	if req.Type.Method == stun.MethodRefresh &&
-		req.Type.Class == stun.ClassRequest {
-		return true, s.sendSessionTable(addr, req, res)
-	} else if req.Type.Method == stun.MethodBinding &&
-		req.Type.Class == stun.ClassRequest {
+	if req.Type == stun.BindingRequest {
 		return true, s.registerPeer(addr, req, res)
 	}
 	log.Printf("not replying: %v", *req)
 
 	return false, nil
-}
-
-func (s *StunServer) sendSessionTable(addr net.Addr, req, res *stun.Message) error {
-	log.Println("Receive refreshSessionTable request")
-	return res.Build(
-		stun.NewTransactionIDSetter(req.TransactionID),
-		stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse),
-		stunSoftware,
-		stun.NewUsername(s.ID),
-		s.peers,
-		stun.NewShortTermIntegrity(stunPassword),
-		stun.Fingerprint,
-	)
-}
-
-func (s *StunServer) replyPing(addr net.Addr, req, res *stun.Message) error {
-	switch peer := addr.(type) {
-	case *net.UDPAddr:
-		log.Printf("Received ping from peer %v[%d]", peer.IP, peer.Port)
-	default:
-		return fmt.Errorf("unknown addr: %v", addr)
-	}
-
-	return res.Build(
-		stun.NewTransactionIDSetter(req.TransactionID),
-		stun.NewType(stun.MethodRefresh, stun.ClassSuccessResponse),
-		stunSoftware,
-		stun.NewUsername(s.ID),
-		stun.NewShortTermIntegrity(stunPassword),
-		stun.Fingerprint,
-	)
 }
 
 func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) error {
@@ -169,6 +134,7 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) error {
 			Port: s.peers[id].Port,
 		},
 		stun.NewUsername(s.ID),
+		s.peers,
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
 	)
