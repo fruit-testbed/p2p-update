@@ -59,12 +59,11 @@ func (sc *StunClient) Start(address string) error {
 	}
 	go func() {
 		for {
-			select {
-			case msg := <- sc.fsm:
-				sc.transition(msg)
-			}
+			msg := <- sc.fsm
+			sc.transition(msg)
 		}
 	}()
+	go sc.keepAlive()
 	sc.fsm <- StunTransitionBinding
 	return nil
 }
@@ -72,13 +71,26 @@ func (sc *StunClient) Start(address string) error {
 func (sc *StunClient) keepAlive() {
 	// Some applications send a keep-alive packet every 60 seconds. Here we set 30 seconds.
 	// reference: https://stackoverflow.com/q/13501288
+	sleepTime := 1000 * time.Millisecond // 1 second
+	stunKeepAliveTimeout := 30 // in seconds
 	counter := 0
 	for {
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(sleepTime)
 		switch sc.State {
 		case StunStateRegistered:
-			if counter += 1; counter > 1 {
-				// TODO: send a keep-alive packet to STUN server
+			if counter += 1; counter > stunKeepAliveTimeout {
+				deadline := time.Now().Add(stunReplyTimeout)
+				handler := stun.HandlerFunc(func(e stun.Event) {
+					if e.Error != nil {
+						log.Println("Failed sent keep-alive packet to STUN server:", e.Error)
+					} else if e.Message == nil || ValidateMessage(e.Message, &stun.BindingSuccess) != nil {
+						log.Println("Failed sent keep-alive packet to STUN server: invalid message")
+					}
+				})
+				if err := sc.client.Start(sc.bindMessage(), deadline, handler); err != nil {
+					log.Printf("Binding failed: %v", err)
+					sc.fsm <- StunTransitionBindError
+				}
 				counter = 0
 			}
 		default:
