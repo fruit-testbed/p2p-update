@@ -138,8 +138,10 @@ func (sc *StunClient) sendKeepAliveMessage() {
 	handler := stun.HandlerFunc(func(e stun.Event) {
 		if e.Error != nil {
 			log.Println("Failed sent keep-alive packet to STUN server:", e.Error)
-		} else if e.Message == nil || validateMessage(e.Message, &stun.BindingSuccess) != nil {
-			log.Println("Failed sent keep-alive packet to STUN server: invalid message")
+		} else if e.Message == nil {
+			log.Println("Failed sent keep-alive packet to STUN server: empty message")
+		} else if err := validateMessage(e.Message, &stun.BindingSuccess); err != nil {
+			log.Println("Failed sent keep-alive packet to STUN server: invalid message -", err)
 		}
 	})
 	if err := sc.client.Start(sc.bindMessage(), deadline, handler); err != nil {
@@ -182,19 +184,19 @@ func (sc *StunClient) transitionBinding() {
 				sc.fsm <- StunTransitionBindError
 			} else if e.Error != nil {
 				log.Println("Got error", e.Error)
-			} else if e.Message != nil {
-				if err := validateMessage(e.Message, &stun.BindingSuccess); err != nil {
-					log.Println("Invalid response message:", err)
-					sc.fsm <- StunTransitionBindError
+			} else if e.Message == nil {
+				log.Println("Empty message")
+			} else if err := validateMessage(e.Message, &stun.BindingSuccess); err != nil {
+				log.Println("Invalid response message:", err)
+				sc.fsm <- StunTransitionBindError
+			} else {
+				var xorAddr stun.XORMappedAddress
+				if err = xorAddr.GetFrom(e.Message); err != nil {
+					log.Println("Failed getting mapped address:", err)
 				} else {
-					var xorAddr stun.XORMappedAddress
-					if err = xorAddr.GetFrom(e.Message); err != nil {
-						log.Println("Failed getting mapped address:", err)
-					} else {
-						log.Println("Mapped address", xorAddr)
-					}
-					sc.fsm <- StunTransitionBindSuccess
+					log.Println("Mapped address", xorAddr)
 				}
+				sc.fsm <- StunTransitionBindSuccess
 			}
 		})
 		if err := sc.client.Start(sc.bindMessage(), deadline, handler); err != nil {
