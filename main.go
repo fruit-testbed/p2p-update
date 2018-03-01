@@ -32,7 +32,7 @@ func main() {
 	}
 
 	if !*disabledClient {
-		c, err := NewStunClient()
+		/*c, err := NewStunClient()
 		if err == nil {
 			if err = c.Start(*stunServerAddrConnect); err != nil {
 				log.Fatal(err)
@@ -43,7 +43,21 @@ func main() {
 			log.Println(c.fsm.Current())
 		} else {
 			log.Fatal(err)
+		}*/
+		var (
+			id  string
+			err error
+		)
+		if id, err = localID(); err != nil {
+			log.Println("Cannot get local id:", err)
 		}
+		overlay := NewOverlay(id)
+		if err = overlay.Open(*stunServerAddrConnect); err != nil {
+			log.Println("Cannot open overlay:", err)
+		}
+		time.Sleep(10 * time.Minute)
+		log.Println("overlay's state:", overlay.automata.current)
+		time.Sleep(time.Second)
 	}
 
 	wg.Wait()
