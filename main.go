@@ -32,18 +32,6 @@ func main() {
 	}
 
 	if !*disabledClient {
-		/*c, err := NewStunClient()
-		if err == nil {
-			if err = c.Start(*stunServerAddrConnect); err != nil {
-				log.Fatal(err)
-			}
-			time.Sleep(10000 * time.Millisecond)
-			c.Stop()
-			time.Sleep(1000 * time.Millisecond)
-			log.Println(c.fsm.Current())
-		} else {
-			log.Fatal(err)
-		}*/
 		var (
 			id      string
 			overlay *Overlay
