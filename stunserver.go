@@ -29,16 +29,18 @@ func NewStunServer(address string) (*StunServer, error) {
 	}, nil
 }
 
-func (s *StunServer) run(wg *sync.WaitGroup) error {
+func (s *StunServer) run(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	conn, err := net.ListenPacket("udp", s.Address)
 	if err != nil {
-		return err
+		log.Println(err)
+		return
 	}
 	log.Printf("Serving at %s with id:%s", s.Address, s.ID)
-	s.serve(conn)
-	return nil
+	if err = s.serve(conn); err != nil {
+		log.Println(err)
+	}
 }
 
 func (s *StunServer) serve(c net.PacketConn) error {
