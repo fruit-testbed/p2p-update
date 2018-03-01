@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"sync"
@@ -13,10 +14,11 @@ import (
 type Overlay struct {
 	sync.Mutex
 	ID       string
+	destAddr *net.UDPAddr
 	stun     *stun.Client
 	automata *automata
 	peer     Peer
-	conn     net.Conn
+	conn     *net.UDPConn
 	errCount int
 }
 
@@ -94,17 +96,35 @@ func (overlay *Overlay) createAutomata() {
 
 func (overlay *Overlay) Open(serverAddr string) error {
 	var err error
-	overlay.conn, err = net.Dial("udp", serverAddr)
+	if overlay.destAddr, err = net.ResolveUDPAddr("udp", serverAddr); err != nil {
+		return errors.Wrapf(err, "failed resolving server address %s", serverAddr)
+	}
+	overlay.conn, err = net.ListenUDP("udp", nil)
 	if err != nil {
 		return err
 	}
 	overlay.stun, err = stun.NewClient(stun.ClientOptions{
-		Connection: overlay.conn,
+		Connection: overlay,
 	})
 	if err != nil {
 		return errors.Wrapf(err, "Failed dialing the STUN server at %s", serverAddr)
 	}
 	return overlay.automata.event(eventBindReq)
+}
+
+func (overlay *Overlay) Read(p []byte) (n int, err error) {
+	return overlay.conn.Read(p)
+}
+
+func (overlay *Overlay) Write(p []byte) (n int, err error) {
+	if overlay.destAddr == nil {
+		return 0, fmt.Errorf("destination address is nil")
+	}
+	return overlay.conn.WriteToUDP(p, overlay.destAddr)
+}
+
+func (overlay *Overlay) Close() error {
+	return overlay.conn.Close()
 }
 
 func (overlay *Overlay) stopped() {
