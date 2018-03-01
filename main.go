@@ -45,14 +45,16 @@ func main() {
 			log.Fatal(err)
 		}*/
 		var (
-			id  string
-			err error
+			id      string
+			overlay *Overlay
+			err     error
 		)
 		if id, err = localID(); err != nil {
 			log.Println("Cannot get local id:", err)
 		}
-		overlay := NewOverlay(id)
-		if err = overlay.Open(*stunServerAddrConnect); err != nil {
+		if overlay, err = NewOverlay(id, *stunServerAddrConnect, nil); err != nil {
+			log.Println("Cannot crete overlay:", err)
+		} else if err = overlay.Open(); err != nil {
 			log.Println("Cannot open overlay:", err)
 		}
 		time.Sleep(10 * time.Minute)

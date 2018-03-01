@@ -19,6 +19,10 @@ var (
 	stunSoftware = stun.NewSoftware("fruit/p2psecureupdate")
 	stunPassword = "123"
 
+	stunDataRequest = stun.NewType(stun.MethodData, stun.ClassRequest)
+	stunDataSuccess = stun.NewType(stun.MethodData, stun.ClassSuccessResponse)
+	stunDataError   = stun.NewType(stun.MethodData, stun.ClassErrorResponse)
+
 	stunReplyTimeout = time.Second * 5
 
 	errNonSTUNMessage = errors.New("Not STUN Message")
