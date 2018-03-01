@@ -146,12 +146,15 @@ func (overlay *Overlay) createAutomata() {
 }
 
 func (overlay *Overlay) Open() error {
+	overlay.Lock()
 	if overlay.automata.current != stateClosed {
+		overlay.Unlock()
 		return fmt.Errorf("current state (%d) is not closed", overlay.automata.current)
 	}
 
 	var err error
 	if err = overlay.conn.Open(); err != nil {
+		overlay.Unlock()
 		return errors.Wrap(err, "failed opening UDP connection")
 	}
 	overlay.stun, err = stun.NewClient(
@@ -159,9 +162,27 @@ func (overlay *Overlay) Open() error {
 			Connection: overlay.conn,
 		})
 	if err != nil {
+		overlay.Unlock()
 		return errors.Wrapf(err, "Failed dialing the STUN server at %s", overlay.conn.rendezvousAddr)
 	}
+	overlay.Unlock()
 	return overlay.automata.event(eventOpen)
+}
+
+func (overlay *Overlay) Close() error {
+	overlay.Lock()
+	switch overlay.automata.current {
+	case stateStopped, stateReceivingData:
+		overlay.Unlock()
+		return fmt.Errorf("current state (%d) is not stopped or receivingData", overlay.automata.current)
+	}
+	if err := overlay.stun.Close(); err != nil {
+		overlay.Unlock()
+		return errors.Wrap(err, "failed to close connection")
+	}
+	overlay.errCount = 0
+	overlay.Unlock()
+	return overlay.automata.event(eventClose)
 }
 
 func (overlay *Overlay) stopped() {
