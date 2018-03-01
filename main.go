@@ -5,16 +5,14 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"github.com/gortc/stun"
 )
 
 var (
-	enabledStunServer = flag.Bool("enabledStunServer", false,
-		"enabled STUN server")
-	stunServerAddrListen = flag.String("stunServerListen", "0.0.0.0:3478",
-		"[address]:[port] of STUN server to listen")
-	stunServerAddrConnect = flag.String("stunServerConnect",
-		"fruit-testbed.org:3478", "[address]:[port] of STUN server to connect")
-	disabledClient = flag.Bool("disabledClient", false, "disabled client")
+	stunServerMode = flag.Bool("stun", false, "server mode")
+	address        = flag.String("addr", "", "STUN server address e.g. fruit-testbed.org:3478 (client mode), listen address (server mode), or data destination address (send mode)")
+	sendData       = flag.String("send", "", "data to be sent")
 )
 
 func main() {
@@ -22,16 +20,34 @@ func main() {
 
 	flag.Parse()
 
-	if *enabledStunServer {
-		if server, err := NewStunServer(*stunServerAddrListen); err == nil {
+	if *stunServerMode {
+		if server, err := NewStunServer(*address); err == nil {
 			wg.Add(1)
 			go server.run(&wg)
 		} else {
 			log.Fatalln("Failed starting the STUN server: %v", err)
 		}
-	}
-
-	if !*disabledClient {
+		wg.Wait()
+		log.Println("Server is exiting.")
+	} else if *sendData != "" {
+		c, err := stun.Dial("udp", *address)
+		if err != nil {
+			log.Fatalln("Failed dialing to destination", *address)
+		}
+		msg := stun.MustBuild(
+			stun.TransactionID,
+			stunDataRequest,
+			stunSoftware,
+			stun.NewUsername("sender"),
+		)
+		msg.Add(stun.AttrData, []byte(*sendData))
+		stun.NewShortTermIntegrity(stunPassword).AddTo(msg)
+		stun.Fingerprint.AddTo(msg)
+		c.Do(msg, time.Now().Add(5*time.Second), func(e stun.Event) {
+			log.Println(e.Error)
+			log.Println(e.Message)
+		})
+	} else {
 		var (
 			id      string
 			overlay *Overlay
@@ -40,7 +56,7 @@ func main() {
 		if id, err = localID(); err != nil {
 			log.Println("Cannot get local id:", err)
 		}
-		if overlay, err = NewOverlay(id, *stunServerAddrConnect, nil); err != nil {
+		if overlay, err = NewOverlay(id, *address, nil); err != nil {
 			log.Println("Cannot crete overlay:", err)
 		} else if err = overlay.Open(); err != nil {
 			log.Println("Cannot open overlay:", err)
@@ -49,7 +65,4 @@ func main() {
 		log.Println("overlay's state:", overlay.automata.current)
 		time.Sleep(time.Second)
 	}
-
-	wg.Wait()
-	log.Println("The program is exiting.")
 }
