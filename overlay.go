@@ -88,8 +88,9 @@ func NewOverlay(id string, rendezvousAddr string, dataHandler DataHandler) (*Ove
 }
 
 const (
-	maxErrorCount         = 5
+	bindErrorsLimit       = 5
 	bindingDeadline       = 10 * time.Second
+	dataErrorsLimit       = 10
 	receivingDataDeadline = 30 * time.Second
 	backoffDuration       = 10 * time.Second
 	bufferSize            = 64 * 1024 // buffer size to read UDP packet
@@ -112,7 +113,7 @@ const (
 	eventSuccess
 	eventError
 	eventErrorsUnderLimit
-	eventErrorsAboveLimit
+	eventErrorsOverLimit
 )
 
 func (overlay *Overlay) createAutomata() {
@@ -125,14 +126,14 @@ func (overlay *Overlay) createAutomata() {
 			transition{src: stateBinding, event: eventSuccess, dest: stateReceivingData},
 			transition{src: stateBinding, event: eventError, dest: stateBindError},
 			transition{src: stateBindError, event: eventErrorsUnderLimit, dest: stateStopped},
-			transition{src: stateBindError, event: eventErrorsAboveLimit, dest: stateClosed},
+			transition{src: stateBindError, event: eventErrorsOverLimit, dest: stateClosed},
 			transition{src: stateReceivingData, event: eventClose, dest: stateClosed},
 			transition{src: stateReceivingData, event: eventSuccess, dest: stateProcessingData},
 			transition{src: stateReceivingData, event: eventError, dest: stateDataError},
 			transition{src: stateProcessingData, event: eventSuccess, dest: stateReceivingData},
 			transition{src: stateProcessingData, event: eventError, dest: stateDataError},
 			transition{src: stateDataError, event: eventErrorsUnderLimit, dest: stateReceivingData},
-			transition{src: stateDataError, event: eventErrorsAboveLimit, dest: stateStopped},
+			transition{src: stateDataError, event: eventErrorsOverLimit, dest: stateStopped},
 		},
 		callbacks{
 			stateStopped:        overlay.stopped,
@@ -232,10 +233,10 @@ func (overlay *Overlay) bindingRequestMessage() *stun.Message {
 func (overlay *Overlay) bindError() {
 	overlay.Lock()
 	overlay.errCount++
-	if overlay.errCount >= maxErrorCount {
+	if overlay.errCount >= bindErrorsLimit {
 		overlay.errCount = 0
 		overlay.Unlock()
-		// replace below two lines with: `overlay.automata.event(eventErrorsAboveLimit)`
+		// replace below two lines with: `overlay.automata.event(eventErrorsOverLimit)`
 		// to disable infinite loop
 		time.Sleep(backoffDuration)
 		overlay.automata.event(eventErrorsUnderLimit)
@@ -343,10 +344,10 @@ func (overlay *Overlay) buildDataResponseMessage(success bool) error {
 func (overlay *Overlay) dataError() {
 	overlay.Lock()
 	overlay.errCount++
-	if overlay.errCount >= maxErrorCount {
+	if overlay.errCount >= dataErrorsLimit {
 		overlay.errCount = 0
 		overlay.Unlock()
-		overlay.automata.event(eventErrorsAboveLimit)
+		overlay.automata.event(eventErrorsOverLimit)
 	} else {
 		overlay.Unlock()
 		overlay.automata.event(eventErrorsUnderLimit)
