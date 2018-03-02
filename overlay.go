@@ -1,10 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/gortc/stun"
@@ -54,13 +52,13 @@ type DataHandler interface {
 }
 
 type Overlay struct {
-	sync.Mutex
 	ID          string
 	automata    *automata
 	conn        *overlayConn
 	stun        *stun.Client
 	errCount    int
 	DataHandler DataHandler
+	Reopen      bool
 
 	addr *net.UDPAddr
 	msg  []byte
@@ -80,6 +78,7 @@ func NewOverlay(id string, rendezvousAddr string, dataHandler DataHandler) (*Ove
 		ID:          id,
 		conn:        conn,
 		DataHandler: dataHandler,
+		Reopen:      true,
 		req:         new(stun.Message),
 		res:         new(stun.Message),
 	}
@@ -89,16 +88,16 @@ func NewOverlay(id string, rendezvousAddr string, dataHandler DataHandler) (*Ove
 
 const (
 	bindErrorsLimit       = 5
-	bindingDeadline       = 10 * time.Second
-	dataErrorsLimit       = 2
-	receivingDataDeadline = 3 * time.Second
+	bindingDeadline       = 30 * time.Second
+	dataErrorsLimit       = 5
+	receivingDataDeadline = 30 * time.Second
 	backoffDuration       = 10 * time.Second
 	bufferSize            = 64 * 1024 // buffer size to read UDP packet
 )
 
 const (
 	stateClosed = iota
-	stateStopped
+	stateOpened
 	stateBinding
 	stateBindError
 	stateReceivingData
@@ -120,74 +119,73 @@ func (overlay *Overlay) createAutomata() {
 	overlay.automata = NewAutomata(
 		stateClosed,
 		[]transition{
-			transition{src: stateClosed, event: eventOpen, dest: stateStopped},
-			transition{src: stateStopped, event: eventClose, dest: stateClosed},
-			transition{src: stateStopped, event: eventBind, dest: stateBinding},
+			transition{src: stateClosed, event: eventOpen, dest: stateOpened},
+			transition{src: stateOpened, event: eventClose, dest: stateClosed},
+			transition{src: stateOpened, event: eventBind, dest: stateBinding},
 			transition{src: stateBinding, event: eventSuccess, dest: stateReceivingData},
 			transition{src: stateBinding, event: eventError, dest: stateBindError},
-			transition{src: stateBindError, event: eventErrorsUnderLimit, dest: stateStopped},
+			transition{src: stateBindError, event: eventErrorsUnderLimit, dest: stateOpened},
 			transition{src: stateBindError, event: eventErrorsOverLimit, dest: stateClosed},
 			transition{src: stateReceivingData, event: eventClose, dest: stateClosed},
 			transition{src: stateReceivingData, event: eventSuccess, dest: stateProcessingData},
 			transition{src: stateReceivingData, event: eventError, dest: stateDataError},
 			transition{src: stateProcessingData, event: eventSuccess, dest: stateReceivingData},
 			transition{src: stateProcessingData, event: eventError, dest: stateDataError},
-			transition{src: stateDataError, event: eventErrorsUnderLimit, dest: stateBinding},
-			transition{src: stateDataError, event: eventErrorsOverLimit, dest: stateStopped},
+			transition{src: stateDataError, event: eventErrorsUnderLimit, dest: stateReceivingData},
+			transition{src: stateDataError, event: eventErrorsOverLimit, dest: stateBinding},
 		},
 		callbacks{
-			stateStopped:        overlay.stopped,
+			stateOpened:         overlay.opened,
 			stateBinding:        overlay.binding,
 			stateBindError:      overlay.bindError,
 			stateReceivingData:  overlay.receivingData,
 			stateProcessingData: overlay.processingData,
 			stateDataError:      overlay.dataError,
-			stateClosed:         func() {}, // do nothing
+			stateClosed:         overlay.closed,
 		},
 	)
 }
 
 func (overlay *Overlay) Open() error {
-	overlay.Lock()
-	if overlay.automata.current != stateClosed {
-		overlay.Unlock()
-		return fmt.Errorf("current state (%d) is not closed", overlay.automata.current)
-	}
+	return overlay.automata.event(eventOpen)
+}
 
+func (overlay *Overlay) Close() error {
+	return overlay.automata.event(eventClose)
+}
+
+func (overlay *Overlay) closed() {
+	log.Println("closing")
+	go func() {
+		if err := overlay.stun.Close(); err != nil {
+			log.Printf("failed to close connection: %v", err)
+		} else {
+			log.Println("stun client closed")
+		}
+	}()
+	overlay.errCount = 0
+	log.Println("closed")
+
+	if overlay.Reopen {
+		log.Println("reopen")
+		overlay.automata.event(eventOpen)
+	} else {
+		log.Println("overlay is stopped")
+	}
+}
+
+func (overlay *Overlay) opened() {
 	var err error
 	if err = overlay.conn.Open(); err != nil {
-		overlay.Unlock()
-		return errors.Wrap(err, "failed opening UDP connection")
+		log.Printf("failed opening UDP connection: %v", err)
 	}
 	overlay.stun, err = stun.NewClient(
 		stun.ClientOptions{
 			Connection: overlay.conn,
 		})
 	if err != nil {
-		overlay.Unlock()
-		return errors.Wrapf(err, "Failed dialing the STUN server at %s", overlay.conn.rendezvousAddr)
+		log.Printf("Failed dialing the STUN server at %s - %v", overlay.conn.rendezvousAddr, err)
 	}
-	overlay.Unlock()
-	return overlay.automata.event(eventOpen)
-}
-
-func (overlay *Overlay) Close() error {
-	overlay.Lock()
-	switch overlay.automata.current {
-	case stateStopped, stateReceivingData:
-		overlay.Unlock()
-		return fmt.Errorf("current state (%d) is not stopped or receivingData", overlay.automata.current)
-	}
-	if err := overlay.stun.Close(); err != nil {
-		overlay.Unlock()
-		return errors.Wrap(err, "failed to close connection")
-	}
-	overlay.errCount = 0
-	overlay.Unlock()
-	return overlay.automata.event(eventClose)
-}
-
-func (overlay *Overlay) stopped() {
 	overlay.automata.event(eventBind)
 }
 
@@ -237,17 +235,14 @@ func (overlay *Overlay) bindingRequestMessage() *stun.Message {
 }
 
 func (overlay *Overlay) bindError() {
-	overlay.Lock()
 	overlay.errCount++
 	if overlay.errCount >= bindErrorsLimit {
 		overlay.errCount = 0
-		overlay.Unlock()
 		// replace below two lines with: `overlay.automata.event(eventErrorsOverLimit)`
 		// to disable infinite loop
 		time.Sleep(backoffDuration)
-		overlay.automata.event(eventErrorsUnderLimit)
+		overlay.automata.event(eventErrorsOverLimit)
 	} else {
-		overlay.Unlock()
 		overlay.automata.event(eventErrorsUnderLimit)
 	}
 }
@@ -349,20 +344,16 @@ func (overlay *Overlay) buildDataResponseMessage(success bool) error {
 }
 
 func (overlay *Overlay) dataError() {
-	overlay.Lock()
 	overlay.errCount++
 	if overlay.errCount >= dataErrorsLimit {
 		overlay.errCount = 0
-		overlay.Unlock()
 		overlay.automata.event(eventErrorsOverLimit)
 	} else {
-		overlay.Unlock()
 		overlay.automata.event(eventErrorsUnderLimit)
 	}
 }
 
 func (overlay *Overlay) HandleData(data []byte, peer *Peer) error {
-	log.Printf("receive data from %s", peer.String())
-	fmt.Println(string(data))
+	log.Printf("receive data from %s\n%s", peer.String(), string(data))
 	return nil
 }
