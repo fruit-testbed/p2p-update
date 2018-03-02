@@ -13,6 +13,7 @@ type overlayConn struct {
 	conn           *net.UDPConn
 	rendezvousAddr *net.UDPAddr
 	localAddr      *net.UDPAddr
+	extAddr        stun.XORMappedAddress
 }
 
 func (oc *overlayConn) Open() error {
@@ -181,7 +182,6 @@ func (overlay *Overlay) binding() {
 	deadline := time.Now().Add(bindingDeadline)
 
 	handler := stun.HandlerFunc(func(e stun.Event) {
-		var xorAddr stun.XORMappedAddress
 		if e.Error != nil {
 			log.Println("bindingError", e.Error)
 			overlay.automata.event(eventError)
@@ -191,11 +191,11 @@ func (overlay *Overlay) binding() {
 		} else if err := validateMessage(e.Message, &stun.BindingSuccess); err != nil {
 			log.Println("bindingError", errors.Wrap(err, "bindReq received an invalid message:"))
 			overlay.automata.event(eventError)
-		} else if err = xorAddr.GetFrom(e.Message); err != nil {
+		} else if err = overlay.conn.extAddr.GetFrom(e.Message); err != nil {
 			log.Println("Failed getting mapped address:", err)
 			overlay.automata.event(eventError)
 		} else {
-			log.Println("XORMappedAddress", xorAddr)
+			log.Println("XORMappedAddress", overlay.conn.extAddr)
 			log.Println("LocalAddr", overlay.conn.conn.LocalAddr())
 			log.Println("RemoteAddr", overlay.conn.conn.RemoteAddr())
 			log.Println("bindingSuccess")
