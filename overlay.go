@@ -41,13 +41,13 @@ type DataHandler interface {
 
 type Overlay struct {
 	ID          string
-	automata    *automata
-	conn        *overlayConn
-	stun        *stun.Client
-	errCount    int
 	DataHandler DataHandler
 	Reopen      bool
-	localPort   int
+
+	automata *automata
+	conn     *overlayConn
+	stun     *stun.Client
+	errCount int
 
 	addr *net.UDPAddr
 	msg  []byte
@@ -96,8 +96,8 @@ const (
 	eventBind
 	eventSuccess
 	eventError
-	eventErrorsUnderLimit
-	eventErrorsOverLimit
+	eventUnderLimit
+	eventOverLimit
 )
 
 func (overlay *Overlay) createAutomata() {
@@ -109,15 +109,15 @@ func (overlay *Overlay) createAutomata() {
 			transition{src: stateOpened, event: eventBind, dest: stateBinding},
 			transition{src: stateBinding, event: eventSuccess, dest: stateReceivingData},
 			transition{src: stateBinding, event: eventError, dest: stateBindError},
-			transition{src: stateBindError, event: eventErrorsUnderLimit, dest: stateOpened},
-			transition{src: stateBindError, event: eventErrorsOverLimit, dest: stateClosed},
+			transition{src: stateBindError, event: eventUnderLimit, dest: stateOpened},
+			transition{src: stateBindError, event: eventOverLimit, dest: stateClosed},
 			transition{src: stateReceivingData, event: eventClose, dest: stateClosed},
 			transition{src: stateReceivingData, event: eventSuccess, dest: stateProcessingData},
 			transition{src: stateReceivingData, event: eventError, dest: stateDataError},
 			transition{src: stateProcessingData, event: eventSuccess, dest: stateReceivingData},
 			transition{src: stateProcessingData, event: eventError, dest: stateDataError},
-			transition{src: stateDataError, event: eventErrorsUnderLimit, dest: stateReceivingData},
-			transition{src: stateDataError, event: eventErrorsOverLimit, dest: stateBinding},
+			transition{src: stateDataError, event: eventUnderLimit, dest: stateReceivingData},
+			transition{src: stateDataError, event: eventOverLimit, dest: stateBinding},
 		},
 		callbacks{
 			stateOpened:         overlay.opened,
@@ -161,6 +161,7 @@ func (overlay *Overlay) closed() {
 
 func (overlay *Overlay) opened() {
 	var err error
+
 	if err = overlay.conn.Open(); err != nil {
 		log.Printf("failed opening UDP connection: %v", err)
 	}
@@ -180,7 +181,6 @@ func (overlay *Overlay) binding() {
 	deadline := time.Now().Add(bindingDeadline)
 
 	handler := stun.HandlerFunc(func(e stun.Event) {
-		log.Println(e)
 		var xorAddr stun.XORMappedAddress
 		if e.Error != nil {
 			log.Println("bindingError", e.Error)
@@ -195,7 +195,6 @@ func (overlay *Overlay) binding() {
 			log.Println("Failed getting mapped address:", err)
 			overlay.automata.event(eventError)
 		} else {
-			log.Println("AttrMappedAddress", e.Message.Contains(stun.AttrMappedAddress))
 			log.Println("XORMappedAddress", xorAddr)
 			log.Println("LocalAddr", overlay.conn.conn.LocalAddr())
 			log.Println("RemoteAddr", overlay.conn.conn.RemoteAddr())
@@ -228,12 +227,10 @@ func (overlay *Overlay) bindError() {
 	overlay.errCount++
 	if overlay.errCount >= bindErrorsLimit {
 		overlay.errCount = 0
-		// replace below two lines with: `overlay.automata.event(eventErrorsOverLimit)`
-		// to disable infinite loop
 		time.Sleep(backoffDuration)
-		overlay.automata.event(eventErrorsOverLimit)
+		overlay.automata.event(eventOverLimit)
 	} else {
-		overlay.automata.event(eventErrorsUnderLimit)
+		overlay.automata.event(eventUnderLimit)
 	}
 }
 
@@ -268,7 +265,6 @@ func (overlay *Overlay) receivingData() {
 			overlay.automata.event(eventError)
 		}
 	}
-	//overlay.conn.conn.SetReadDeadline(0 * time.Millisecond)
 }
 
 func (overlay *Overlay) processingData() {
@@ -320,6 +316,7 @@ func (overlay *Overlay) processingData() {
 
 func (overlay *Overlay) buildDataResponseMessage(success bool) error {
 	var messageType stun.MessageType
+
 	if messageType = stunDataSuccess; !success {
 		messageType = stunDataError
 	}
@@ -337,9 +334,9 @@ func (overlay *Overlay) dataError() {
 	overlay.errCount++
 	if overlay.errCount >= dataErrorsLimit {
 		overlay.errCount = 0
-		overlay.automata.event(eventErrorsOverLimit)
+		overlay.automata.event(eventOverLimit)
 	} else {
-		overlay.automata.event(eventErrorsUnderLimit)
+		overlay.automata.event(eventUnderLimit)
 	}
 }
 
