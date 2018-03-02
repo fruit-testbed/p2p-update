@@ -71,42 +71,38 @@ func (s *StunServer) serveConn(c net.PacketConn, res, req *stun.Message) error {
 	}
 
 	// Process the STUN message
-	var reply bool
-	if reply, err = s.processMessage(addr, buf[:n], req, res); err != nil {
-		if err == errNonSTUNMessage {
-			return nil
-		}
+	if err = s.processMessage(addr, buf[:n], req, res); err != nil {
 		log.Printf("ERROR: processMessage - %v", err)
 		return err
-	} else if reply {
-		_, err = c.WriteTo(res.Raw, addr)
-		if err != nil {
-			log.Printf("ERROR: WriteTo - %v", err)
-		}
 	}
+
+	// Send a reply
+	if _, err = c.WriteTo(res.Raw, addr); err != nil {
+		log.Printf("ERROR: WriteTo - %v", err)
+	}
+	log.Printf("Reply sent: %v", res)
 
 	return err
 }
 
-func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Message) (bool, error) {
+func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Message) error {
 	if !stun.IsMessage(msg) {
-		return false, errNonSTUNMessage
+		return errNonSTUNMessage
 	}
 	// Convert the packet message to STUN message format
 	if _, err := req.Write(msg); err != nil {
-		return false, errors.Wrap(err, "Failed to read message")
+		return errors.Wrap(err, "Failed to read message")
 	}
 
 	if err := validateMessage(req, nil); err != nil {
-		return false, errors.Wrap(err, "Invalid message")
+		return errors.Wrap(err, "Invalid message")
 	}
 
 	if req.Type == stun.BindingRequest {
-		return true, s.registerPeer(addr, req, res)
+		return s.registerPeer(addr, req, res)
 	}
-	log.Printf("not replying: %v", *req)
 
-	return false, nil
+	return nil
 }
 
 func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) error {
