@@ -60,7 +60,7 @@ type Overlay struct {
 	conn        *overlayConn
 	stun        *stun.Client
 	errCount    int
-	dataHandler DataHandler
+	DataHandler DataHandler
 
 	addr *net.UDPAddr
 	msg  []byte
@@ -79,7 +79,7 @@ func NewOverlay(id string, rendezvousAddr string, dataHandler DataHandler) (*Ove
 	overlay := &Overlay{
 		ID:          id,
 		conn:        conn,
-		dataHandler: dataHandler,
+		DataHandler: dataHandler,
 		req:         new(stun.Message),
 		res:         new(stun.Message),
 	}
@@ -91,6 +91,7 @@ const (
 	maxErrorCount         = 5
 	bindingDeadline       = 10 * time.Second
 	receivingDataDeadline = 30 * time.Second
+	backoffDuration       = 10 * time.Second
 	bufferSize            = 64 * 1024 // buffer size to read UDP packet
 )
 
@@ -234,7 +235,10 @@ func (overlay *Overlay) bindError() {
 	if overlay.errCount >= maxErrorCount {
 		overlay.errCount = 0
 		overlay.Unlock()
-		overlay.automata.event(eventErrorsAboveLimit)
+		// replace below two lines with: `overlay.automata.event(eventErrorsAboveLimit)`
+		// to disable infinite loop
+		time.Sleep(backoffDuration)
+		overlay.automata.event(eventErrorsUnderLimit)
 	} else {
 		overlay.Unlock()
 		overlay.automata.event(eventErrorsUnderLimit)
@@ -293,7 +297,7 @@ func (overlay *Overlay) processingData() {
 		err = errors.Wrap(err, "invalid STUN data message")
 	} else if err := username.GetFrom(overlay.req); err != nil {
 		err = errors.Wrap(err, "failed to get peerID")
-	} else if overlay.req.Contains(stun.AttrData) && overlay.dataHandler != nil {
+	} else if overlay.req.Contains(stun.AttrData) && overlay.DataHandler != nil {
 		peer := Peer{
 			ID:   username.String(),
 			IP:   overlay.addr.IP,
@@ -301,7 +305,7 @@ func (overlay *Overlay) processingData() {
 		}
 		if data, err = overlay.req.Get(stun.AttrData); err != nil {
 			err = errors.Wrap(err, "failed get the data from STUN message")
-		} else if err = overlay.dataHandler.HandleData(data, &peer); err != nil {
+		} else if err = overlay.DataHandler.HandleData(data, &peer); err != nil {
 			err = errors.Wrap(err, "DataHandler returned an error")
 		}
 	}
@@ -347,4 +351,10 @@ func (overlay *Overlay) dataError() {
 		overlay.Unlock()
 		overlay.automata.event(eventErrorsUnderLimit)
 	}
+}
+
+func (overlay *Overlay) HandleData(data []byte, peer *Peer) error {
+	log.Printf("receive data from %s", peer.String())
+	fmt.Println(string(data))
+	return nil
 }

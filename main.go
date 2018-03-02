@@ -54,12 +54,14 @@ func main() {
 			err     error
 		)
 		if id, err = localID(); err != nil {
-			log.Println("Cannot get local id:", err)
+			log.Fatalln("Cannot get local id:", err)
 		}
 		if overlay, err = NewOverlay(id, *address, nil); err != nil {
-			log.Println("Cannot crete overlay:", err)
-		} else if err = overlay.Open(); err != nil {
-			log.Println("Cannot open overlay:", err)
+			log.Fatalln("Cannot crete overlay:", err)
+		}
+		overlay.DataHandler = overlay
+		if err = overlay.Open(); err != nil {
+			log.Fatalln("Cannot open overlay:", err)
 		}
 		time.Sleep(10 * time.Minute)
 		log.Println("overlay's state:", overlay.automata.current)
