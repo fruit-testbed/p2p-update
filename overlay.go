@@ -12,9 +12,10 @@ import (
 type overlayConn struct {
 	conn           *net.UDPConn
 	rendezvousAddr *net.UDPAddr
+	localAddr      *net.UDPAddr
 }
 
-func newOverlayConn(rendezvousAddr string) (*overlayConn, error) {
+func newOverlayConn(rendezvousAddr string, localAddr *net.UDPAddr) (*overlayConn, error) {
 	var (
 		addr *net.UDPAddr
 		err  error
@@ -24,12 +25,13 @@ func newOverlayConn(rendezvousAddr string) (*overlayConn, error) {
 	}
 	return &overlayConn{
 		rendezvousAddr: addr,
+		localAddr:      localAddr,
 	}, nil
 }
 
 func (oc *overlayConn) Open() error {
 	var err error
-	if oc.conn, err = net.ListenUDP("udp", nil); err != nil {
+	if oc.conn, err = net.ListenUDP("udp", oc.localAddr); err != nil {
 		return errors.Wrap(err, "failed creating UDP connection")
 	}
 	return nil
@@ -59,6 +61,7 @@ type Overlay struct {
 	errCount    int
 	DataHandler DataHandler
 	Reopen      bool
+	localPort   int
 
 	addr *net.UDPAddr
 	msg  []byte
@@ -66,12 +69,12 @@ type Overlay struct {
 	req  *stun.Message
 }
 
-func NewOverlay(id string, rendezvousAddr string, dataHandler DataHandler) (*Overlay, error) {
+func NewOverlay(id, rendezvousAddr string, localAddr *net.UDPAddr, dataHandler DataHandler) (*Overlay, error) {
 	var (
 		conn *overlayConn
 		err  error
 	)
-	if conn, err = newOverlayConn(rendezvousAddr); err != nil {
+	if conn, err = newOverlayConn(rendezvousAddr, localAddr); err != nil {
 		return nil, err
 	}
 	overlay := &Overlay{
@@ -190,7 +193,10 @@ func (overlay *Overlay) opened() {
 }
 
 func (overlay *Overlay) binding() {
+	var err error
+
 	deadline := time.Now().Add(bindingDeadline)
+
 	handler := stun.HandlerFunc(func(e stun.Event) {
 		log.Println(e)
 		var xorAddr stun.XORMappedAddress
@@ -216,8 +222,10 @@ func (overlay *Overlay) binding() {
 		}
 	})
 
-	overlay.conn.conn.SetDeadline(deadline)
-	if err := overlay.stun.Start(overlay.bindingRequestMessage(), deadline, handler); err != nil {
+	if err = overlay.conn.conn.SetDeadline(deadline); err != nil {
+		log.Println("failed setting connection read/write deadline")
+		overlay.automata.event(eventError)
+	} else if err = overlay.stun.Start(overlay.bindingRequestMessage(), deadline, handler); err != nil {
 		log.Println("binding failed:", err)
 		overlay.automata.event(eventError)
 	}

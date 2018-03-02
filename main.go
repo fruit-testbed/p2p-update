@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"net"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 var (
 	stunServerMode = flag.Bool("stun", false, "server mode")
 	address        = flag.String("addr", "", "STUN server address e.g. fruit-testbed.org:3478 (client mode), listen address (server mode), or data destination address (send mode)")
+	localAddr      = flag.String("laddr", "", "local address that STUN client will use")
 	sendData       = flag.String("send", "", "data to be sent")
 )
 
@@ -50,13 +52,17 @@ func main() {
 	} else {
 		var (
 			id      string
+			laddr   *net.UDPAddr
 			overlay *Overlay
 			err     error
 		)
 		if id, err = localID(); err != nil {
 			log.Fatalln("Cannot get local id:", err)
 		}
-		if overlay, err = NewOverlay(id, *address, nil); err != nil {
+		if laddr, err = net.ResolveUDPAddr("udp", *localAddr); err != nil {
+			log.Fatalln("Cannot resolve localAddr:", err)
+		}
+		if overlay, err = NewOverlay(id, *address, laddr, nil); err != nil {
 			log.Fatalln("Cannot crete overlay:", err)
 		}
 		overlay.DataHandler = overlay
