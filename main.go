@@ -51,18 +51,21 @@ func main() {
 		})
 	} else {
 		var (
-			id      string
-			laddr   *net.UDPAddr
-			overlay *Overlay
-			err     error
+			id           string
+			raddr, laddr *net.UDPAddr
+			overlay      *Overlay
+			err          error
 		)
 		if id, err = localID(); err != nil {
 			log.Fatalln("Cannot get local id:", err)
 		}
-		if laddr, err = net.ResolveUDPAddr("udp", *localAddr); err != nil {
-			log.Fatalln("Cannot resolve localAddr:", err)
+		if raddr, err = net.ResolveUDPAddr("udp", *remoteAddr); err != nil {
+			log.Fatalln("Cannot resolve STUN server address (raddr):", err)
 		}
-		if overlay, err = NewOverlay(id, *remoteAddr, laddr, nil); err != nil {
+		if laddr, err = net.ResolveUDPAddr("udp", *localAddr); err != nil {
+			log.Fatalln("Cannot resolve local address (laddr):", err)
+		}
+		if overlay, err = NewOverlay(id, raddr, laddr, nil); err != nil {
 			log.Fatalln("Cannot crete overlay:", err)
 		}
 		overlay.DataHandler = overlay

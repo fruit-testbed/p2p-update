@@ -15,20 +15,6 @@ type overlayConn struct {
 	localAddr      *net.UDPAddr
 }
 
-func newOverlayConn(rendezvousAddr string, localAddr *net.UDPAddr) (*overlayConn, error) {
-	var (
-		addr *net.UDPAddr
-		err  error
-	)
-	if addr, err = net.ResolveUDPAddr("udp", rendezvousAddr); err != nil {
-		return nil, errors.Wrapf(err, "failed resolving rendezvous address %s", rendezvousAddr)
-	}
-	return &overlayConn{
-		rendezvousAddr: addr,
-		localAddr:      localAddr,
-	}, nil
-}
-
 func (oc *overlayConn) Open() error {
 	var err error
 	if oc.conn, err = net.ListenUDP("udp", oc.localAddr); err != nil {
@@ -69,17 +55,13 @@ type Overlay struct {
 	req  *stun.Message
 }
 
-func NewOverlay(id, rendezvousAddr string, localAddr *net.UDPAddr, dataHandler DataHandler) (*Overlay, error) {
-	var (
-		conn *overlayConn
-		err  error
-	)
-	if conn, err = newOverlayConn(rendezvousAddr, localAddr); err != nil {
-		return nil, err
-	}
+func NewOverlay(id string, rendezvousAddr, localAddr *net.UDPAddr, dataHandler DataHandler) (*Overlay, error) {
 	overlay := &Overlay{
-		ID:          id,
-		conn:        conn,
+		ID: id,
+		conn: &overlayConn{
+			rendezvousAddr: rendezvousAddr,
+			localAddr:      localAddr,
+		},
 		DataHandler: dataHandler,
 		Reopen:      true,
 		req:         new(stun.Message),
