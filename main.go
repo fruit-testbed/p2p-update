@@ -12,7 +12,7 @@ import (
 
 var (
 	stunServerMode = flag.Bool("stun", false, "server mode")
-	address        = flag.String("addr", "", "STUN server address e.g. fruit-testbed.org:3478 (client mode), listen address (server mode), or data destination address (send mode)")
+	remoteAddr     = flag.String("raddr", "", "remote address: STUN server address (client mode), listen address (server mode), or destination address (send mode)")
 	localAddr      = flag.String("laddr", "", "local address that STUN client will use")
 	sendData       = flag.String("send", "", "data to be sent")
 )
@@ -23,7 +23,7 @@ func main() {
 	flag.Parse()
 
 	if *stunServerMode {
-		if server, err := NewStunServer(*address); err == nil {
+		if server, err := NewStunServer(*remoteAddr); err == nil {
 			wg.Add(1)
 			go server.run(&wg)
 		} else {
@@ -32,9 +32,9 @@ func main() {
 		wg.Wait()
 		log.Println("Server is exiting.")
 	} else if *sendData != "" {
-		c, err := stun.Dial("udp", *address)
+		c, err := stun.Dial("udp", *remoteAddr)
 		if err != nil {
-			log.Fatalln("Failed dialing to destination", *address)
+			log.Fatalln("Failed dialing to destination", *remoteAddr)
 		}
 		msg := stun.MustBuild(
 			stun.TransactionID,
@@ -62,7 +62,7 @@ func main() {
 		if laddr, err = net.ResolveUDPAddr("udp", *localAddr); err != nil {
 			log.Fatalln("Cannot resolve localAddr:", err)
 		}
-		if overlay, err = NewOverlay(id, *address, laddr, nil); err != nil {
+		if overlay, err = NewOverlay(id, *remoteAddr, laddr, nil); err != nil {
 			log.Fatalln("Cannot crete overlay:", err)
 		}
 		overlay.DataHandler = overlay
