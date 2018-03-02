@@ -50,6 +50,8 @@ type Overlay struct {
 	stun     *stun.Client
 	errCount int
 
+	channelExpired time.Time
+
 	addr *net.UDPAddr
 	msg  []byte
 	res  *stun.Message
@@ -79,6 +81,7 @@ const (
 	receivingDataDeadline = 30 * time.Second
 	backoffDuration       = 10 * time.Second
 	bufferSize            = 64 * 1024 // buffer size to read UDP packet
+	channelDuration       = 45 * time.Second
 )
 
 const (
@@ -199,6 +202,7 @@ func (overlay *Overlay) binding() {
 			log.Println("LocalAddr", overlay.conn.conn.LocalAddr())
 			log.Println("RemoteAddr", overlay.conn.conn.RemoteAddr())
 			log.Println("bindingSuccess")
+			overlay.channelExpired = time.Now().Add(channelDuration)
 			overlay.automata.event(eventSuccess)
 		}
 	})
@@ -244,25 +248,33 @@ func (overlay *Overlay) receivingData() {
 		err  error
 	)
 
+	if deadline.After(overlay.channelExpired) {
+		deadline = overlay.channelExpired
+	}
+	log.Println("channel will expire within", overlay.channelExpired.Sub(time.Now()))
+
 	if err = overlay.conn.conn.SetDeadline(deadline); err != nil {
 		log.Printf("failed to set read deadline: %v", err)
 		overlay.automata.event(eventError)
 	} else if n, addr, err = overlay.conn.conn.ReadFrom(buf); err != nil {
 		log.Printf("failed to read the message: %v", err)
 		overlay.automata.event(eventError)
-	} else if !stun.IsMessage(buf[:n]) {
-		log.Printf("received not a STUN message")
-		overlay.automata.event(eventError)
 	} else {
-		switch peer := addr.(type) {
-		case *net.UDPAddr:
-			overlay.addr = peer
-			log.Printf("received STUN message from %v:%d", peer.IP, peer.Port)
-			overlay.msg = buf[:n]
-			overlay.automata.event(eventSuccess)
-		default:
-			log.Printf("unknown addr: %v", overlay.addr)
+		overlay.channelExpired = time.Now().Add(channelDuration)
+		if !stun.IsMessage(buf[:n]) {
+			log.Printf("received not a STUN message")
 			overlay.automata.event(eventError)
+		} else {
+			switch peer := addr.(type) {
+			case *net.UDPAddr:
+				overlay.addr = peer
+				log.Printf("received STUN message from %v:%d", peer.IP, peer.Port)
+				overlay.msg = buf[:n]
+				overlay.automata.event(eventSuccess)
+			default:
+				log.Printf("unknown addr: %v", overlay.addr)
+				overlay.automata.event(eventError)
+			}
 		}
 	}
 }
