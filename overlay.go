@@ -102,6 +102,7 @@ const (
 	eventError
 	eventUnderLimit
 	eventOverLimit
+	eventChannelExpired
 )
 
 func (overlay *Overlay) createAutomata() {
@@ -118,6 +119,7 @@ func (overlay *Overlay) createAutomata() {
 			transition{src: stateReceivingData, event: eventClose, dest: stateClosed},
 			transition{src: stateReceivingData, event: eventSuccess, dest: stateProcessingData},
 			transition{src: stateReceivingData, event: eventError, dest: stateDataError},
+			transition{src: stateReceivingData, event: eventChannelExpired, dest: stateBinding},
 			transition{src: stateProcessingData, event: eventSuccess, dest: stateReceivingData},
 			transition{src: stateProcessingData, event: eventError, dest: stateDataError},
 			transition{src: stateDataError, event: eventUnderLimit, dest: stateReceivingData},
@@ -253,7 +255,10 @@ func (overlay *Overlay) receivingData() {
 	}
 	log.Println("channel will expire within", overlay.channelExpired.Sub(time.Now()))
 
-	if err = overlay.conn.conn.SetDeadline(deadline); err != nil {
+	if deadline.Before(time.Now()) {
+		log.Println("channel has expired")
+		overlay.automata.event(eventChannelExpired)
+	} else if err = overlay.conn.conn.SetDeadline(deadline); err != nil {
 		log.Printf("failed to set read deadline: %v", err)
 		overlay.automata.event(eventError)
 	} else if n, addr, err = overlay.conn.conn.ReadFrom(buf); err != nil {

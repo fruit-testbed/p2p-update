@@ -12,6 +12,7 @@ graph TD;
 	receivingData -->|close| closed;
 	receivingData -->|success| processingData;
 	receivingData -->|error| dataError;
+	receivingData -->|channelExpired| binding;
 	processingData -->|success| receivingData;
 	processingData -->|error| dataError;
 	dataError -->|underLimit| receivingData;
