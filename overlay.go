@@ -90,8 +90,8 @@ func NewOverlay(id string, rendezvousAddr string, dataHandler DataHandler) (*Ove
 const (
 	bindErrorsLimit       = 5
 	bindingDeadline       = 10 * time.Second
-	dataErrorsLimit       = 10
-	receivingDataDeadline = 30 * time.Second
+	dataErrorsLimit       = 2
+	receivingDataDeadline = 3 * time.Second
 	backoffDuration       = 10 * time.Second
 	bufferSize            = 64 * 1024 // buffer size to read UDP packet
 )
@@ -132,7 +132,7 @@ func (overlay *Overlay) createAutomata() {
 			transition{src: stateReceivingData, event: eventError, dest: stateDataError},
 			transition{src: stateProcessingData, event: eventSuccess, dest: stateReceivingData},
 			transition{src: stateProcessingData, event: eventError, dest: stateDataError},
-			transition{src: stateDataError, event: eventErrorsUnderLimit, dest: stateReceivingData},
+			transition{src: stateDataError, event: eventErrorsUnderLimit, dest: stateBinding},
 			transition{src: stateDataError, event: eventErrorsOverLimit, dest: stateStopped},
 		},
 		callbacks{
@@ -194,15 +194,20 @@ func (overlay *Overlay) stopped() {
 func (overlay *Overlay) binding() {
 	deadline := time.Now().Add(bindingDeadline)
 	handler := stun.HandlerFunc(func(e stun.Event) {
+		log.Println(e)
 		var xorAddr stun.XORMappedAddress
 		if e.Error != nil {
 			log.Println("bindingError", e.Error)
+			overlay.automata.event(eventError)
 		} else if e.Message == nil {
 			log.Println("bindingError", errors.New("bindReq received an empty message"))
+			overlay.automata.event(eventError)
 		} else if err := validateMessage(e.Message, &stun.BindingSuccess); err != nil {
 			log.Println("bindingError", errors.Wrap(err, "bindReq received an invalid message:"))
+			overlay.automata.event(eventError)
 		} else if err = xorAddr.GetFrom(e.Message); err != nil {
 			log.Println("Failed getting mapped address:", err)
+			overlay.automata.event(eventError)
 		} else {
 			log.Println("AttrMappedAddress", e.Message.Contains(stun.AttrMappedAddress))
 			log.Println("XORMappedAddress", xorAddr)
@@ -211,8 +216,9 @@ func (overlay *Overlay) binding() {
 			log.Println("bindingSuccess")
 			overlay.automata.event(eventSuccess)
 		}
-		overlay.automata.event(eventError)
 	})
+
+	overlay.conn.conn.SetDeadline(deadline)
 	if err := overlay.stun.Start(overlay.bindingRequestMessage(), deadline, handler); err != nil {
 		log.Println("binding failed:", err)
 		overlay.automata.event(eventError)
@@ -256,7 +262,7 @@ func (overlay *Overlay) receivingData() {
 		err  error
 	)
 
-	if err = overlay.conn.conn.SetReadDeadline(deadline); err != nil {
+	if err = overlay.conn.conn.SetDeadline(deadline); err != nil {
 		log.Printf("failed to set read deadline: %v", err)
 		overlay.automata.event(eventError)
 	} else if n, addr, err = overlay.conn.conn.ReadFrom(buf); err != nil {
@@ -277,6 +283,7 @@ func (overlay *Overlay) receivingData() {
 			overlay.automata.event(eventError)
 		}
 	}
+	//overlay.conn.conn.SetReadDeadline(0 * time.Millisecond)
 }
 
 func (overlay *Overlay) processingData() {
