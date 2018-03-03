@@ -344,7 +344,7 @@ func (overlay *Overlay) processingMessage() {
 	} else if err = validateMessage(overlay.req, nil); err != nil {
 		log.Println("invalid STUN message:", err)
 		overlay.automata.event(eventError)
-	} else if err := username.GetFrom(overlay.req); err != nil {
+	} else if err = username.GetFrom(overlay.req); err != nil {
 		log.Println("failed to get peerID:", err)
 		overlay.automata.event(eventError)
 	} else if overlay.req.Type == stunBindingIndication {
@@ -361,7 +361,12 @@ func (overlay *Overlay) processingMessage() {
 			ID:   username.String(),
 			Addr: *overlay.addr,
 		}
-		overlay.processingDataRequest(peer)
+		if err = overlay.processDataRequest(peer); err != nil {
+			log.Printf("ERROR: failed processing data request: %v", err)
+			overlay.automata.event(eventError)
+		} else {
+			overlay.automata.event(eventSuccess)
+		}
 	} else {
 		log.Printf("ignored STUN message from %s", overlay.addr.String())
 		overlay.automata.event(eventError)
@@ -381,7 +386,7 @@ func (overlay *Overlay) processSessionTable() error {
 		if err = overlay.bindChannelPeer(&peer); err != nil {
 			log.Printf("WARNING: failed binding channel to %s - %v", peer.String(), err)
 		} else {
-			log.Printf("-> send empty packet to opening channel to %s", peer.String())
+			log.Printf("-> sent empty packet to opening channel to %s", peer.String())
 		}
 	}
 	return nil
@@ -395,29 +400,30 @@ func (overlay *Overlay) bindChannelPeer(peer *Peer) error {
 	return nil
 }
 
-func (overlay *Overlay) processingDataRequest(peer *Peer) {
+func (overlay *Overlay) processDataRequest(peer *Peer) error {
 	var (
 		data []byte
 		err  error
 	)
 
 	if data, err = overlay.req.Get(stun.AttrData); err != nil {
-		log.Println("invalid data request from", peer.String())
-		overlay.buildDataErrorMessage(stun.CodeBadRequest)
+		return fmt.Errorf("invalid data request from %s", peer.String())
 	} else if err = overlay.DataHandler.HandleData(data, peer); err != nil {
 		log.Println("DataHandler returned an error:", err)
-		overlay.buildDataErrorMessage(stun.CodeServerError)
+		if err = overlay.buildDataErrorMessage(stun.CodeServerError); err != nil {
+			return err
+		}
 	} else {
 		log.Println("Successfully processing data")
-		overlay.buildDataSuccessMessage()
+		if err = overlay.buildDataSuccessMessage(); err != nil {
+			return err
+		}
 	}
 	if _, err = overlay.conn.conn.WriteToUDP(overlay.res.Raw, overlay.addr); err != nil {
-		log.Printf("failed send response to %s - %v", peer.String(), err)
-		overlay.automata.event(eventError)
-	} else {
-		log.Printf("-> send response to %s", peer.String())
-		overlay.automata.event(eventSuccess)
+		return errors.Wrapf(err, "failed send response to %s", peer.String())
 	}
+	log.Printf("-> sent response to %s", peer.String())
+	return nil
 }
 
 func (overlay *Overlay) buildDataErrorMessage(ec stun.ErrorCode) error {
