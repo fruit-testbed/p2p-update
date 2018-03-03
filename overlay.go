@@ -363,6 +363,9 @@ func (overlay *Overlay) processingMessage(data []interface{}) {
 			} else {
 				overlay.automata.event(eventSuccess)
 			}
+		} else if req.Type == stun.BindingRequest {
+			// TODO: receive ping, reply with internal and external addresses
+			overlay.automata.event(eventError)
 		} else if req.Type == stunDataRequest &&
 			req.Contains(stun.AttrData) &&
 			overlay.DataHandler != nil {
