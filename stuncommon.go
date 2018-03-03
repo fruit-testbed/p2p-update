@@ -30,12 +30,13 @@ var (
 )
 
 type Peer struct {
-	ID   string
-	Addr net.UDPAddr
+	ID           string
+	InternalAddr net.UDPAddr
+	ExternalAddr net.UDPAddr
 }
 
 func (p Peer) String() string {
-	return fmt.Sprintf("%s[%s]", p.ID, p.Addr.String())
+	return fmt.Sprintf("%s[%s][%s]", p.ID, p.InternalAddr.String(), p.ExternalAddr.String())
 }
 
 func (p Peer) AddTo(m *stun.Message) error {
@@ -109,7 +110,7 @@ func validateMessage(m *stun.Message, t *stun.MessageType) error {
 
 	var username stun.Username
 	if err = username.GetFrom(m); err != nil {
-		return err
+		return fmt.Errorf("invalid username: %v", err)
 	}
 
 	if err = stun.Fingerprint.Check(m); err != nil {

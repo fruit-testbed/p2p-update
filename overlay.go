@@ -208,6 +208,7 @@ func (overlay *Overlay) opening([]interface{}) {
 				backoffDuration, overlay.rendezvousAddr, err)
 			overlay.automata.event(eventError)
 		} else {
+			log.Printf("local address: %s", overlay.conn.conn.LocalAddr().String())
 			overlay.automata.event(eventSuccess)
 		}
 	}
@@ -218,7 +219,10 @@ func (overlay *Overlay) opened([]interface{}) {
 }
 
 func (overlay *Overlay) binding([]interface{}) {
-	var err error
+	var (
+		msg *stun.Message
+		err error
+	)
 
 	deadline := time.Now().Add(bindingDeadline)
 
@@ -250,16 +254,33 @@ func (overlay *Overlay) binding([]interface{}) {
 	if err = overlay.conn.conn.SetDeadline(deadline); err != nil {
 		log.Println("failed setting connection read/write deadline")
 		overlay.automata.event(eventError)
-	} else if err = overlay.stun.Start(overlay.bindingRequestMessage(), deadline, handler); err != nil {
+	} else if msg, err = overlay.bindingRequestMessage(); err != nil {
+		log.Println("failed building bindingRequestMessage", err)
+		overlay.automata.event(eventError)
+	} else if err = overlay.stun.Start(msg, deadline, handler); err != nil {
 		log.Println("binding failed:", err)
 		overlay.automata.event(eventError)
 	}
 }
 
-func (overlay *Overlay) bindingRequestMessage() *stun.Message {
-	return stun.MustBuild(
+func (overlay *Overlay) bindingRequestMessage() (*stun.Message, error) {
+	var (
+		laddr   = overlay.conn.conn.LocalAddr()
+		addr    *net.UDPAddr
+		xorAddr stun.XORMappedAddress
+		err     error
+	)
+
+	if addr, err = net.ResolveUDPAddr(laddr.Network(), laddr.String()); err != nil {
+		return nil, err
+	}
+	xorAddr.IP = addr.IP
+	xorAddr.Port = addr.Port
+
+	return stun.Build(
 		stun.TransactionID,
 		stun.BindingRequest,
+		xorAddr,
 		stunSoftware,
 		stun.NewUsername(overlay.ID),
 		stun.NewShortTermIntegrity(stunPassword),
@@ -330,7 +351,7 @@ func (overlay *Overlay) processingMessage(data []interface{}) {
 
 	switch addr := data[0].(type) {
 	case *net.UDPAddr:
-		peer.Addr = *addr
+		peer.ExternalAddr = *addr
 	default:
 		log.Fatalln("ERROR: first argument is not *Peer")
 	}
@@ -343,16 +364,16 @@ func (overlay *Overlay) processingMessage(data []interface{}) {
 	}
 
 	if !stun.IsMessage(msg) {
-		log.Printf("!!! %s sent a message that is not a STUN message", peer.Addr.String())
+		log.Printf("!!! %s sent a message that is not a STUN message", peer.String())
 		overlay.automata.event(eventError)
 	} else if _, err = req.Write(msg); err != nil {
-		log.Printf("failed to read message from %s: %v", peer.Addr.String(), err)
+		log.Printf("failed to read message from %s: %v", peer.String(), err)
 		overlay.automata.event(eventError)
 	} else if err = validateMessage(&req, nil); err != nil {
-		log.Printf("%s sent invalid STUN message: %v", peer.Addr.String(), err)
+		log.Printf("%s sent invalid STUN message: %v", peer.String(), err)
 		overlay.automata.event(eventError)
 	} else if err = username.GetFrom(&req); err != nil {
-		log.Printf("failed to get peerID of %s: %v", peer.Addr.String(), err)
+		log.Printf("failed to get peerID of %s: %v", peer.String(), err)
 		overlay.automata.event(eventError)
 	} else {
 		peer.ID = username.String()
@@ -405,7 +426,7 @@ func (overlay *Overlay) processSessionTable(req, res *stun.Message) error {
 }
 
 func (overlay *Overlay) bindChannelPeer(peer *Peer) error {
-	if _, err := overlay.conn.conn.WriteToUDP([]byte{}, &peer.Addr); err != nil {
+	if _, err := overlay.conn.conn.WriteToUDP([]byte{}, &peer.ExternalAddr); err != nil {
 		return err
 	}
 	overlay.peers[peer.ID] = peer
@@ -431,7 +452,7 @@ func (overlay *Overlay) processDataRequest(req, res *stun.Message, peer *Peer) e
 			return err
 		}
 	}
-	if _, err = overlay.conn.conn.WriteToUDP(res.Raw, &peer.Addr); err != nil {
+	if _, err = overlay.conn.conn.WriteToUDP(res.Raw, &peer.ExternalAddr); err != nil {
 		return errors.Wrapf(err, "failed send response to %s", peer.String())
 	}
 	log.Printf("-> sent response to %s", peer.String())

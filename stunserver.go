@@ -128,16 +128,28 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
 
 func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) (string, error) {
 	// Extract Peer's ID, IP, and port from the message, then register it
-	var username stun.Username
+	var (
+		username stun.Username
+		xorAddr  stun.XORMappedAddress
+	)
+
 	if err := username.GetFrom(req); err != nil {
 		return "", errors.Wrap(err, "Failed to read peer ID")
 	}
+	if err := xorAddr.GetFrom(req); err != nil {
+		return "", errors.Wrap(err, "failed getting peer internal address")
+	}
+
 	id := username.String()
 	switch peer := addr.(type) {
 	case *net.UDPAddr:
 		s.peers[id] = Peer{
-			ID:   id,
-			Addr: *peer,
+			ID:           id,
+			ExternalAddr: *peer,
+			InternalAddr: net.UDPAddr{
+				IP:   xorAddr.IP,
+				Port: xorAddr.Port,
+			},
 		}
 		log.Printf("Registered peer %s", s.peers[id].String())
 	default:
@@ -148,8 +160,8 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) (string
 		stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
 		stunSoftware,
 		&stun.XORMappedAddress{
-			IP:   s.peers[id].Addr.IP,
-			Port: s.peers[id].Addr.Port,
+			IP:   s.peers[id].ExternalAddr.IP,
+			Port: s.peers[id].ExternalAddr.Port,
 		},
 		stun.NewUsername(s.ID),
 		s.peers,
@@ -176,7 +188,7 @@ func (s *StunServer) advertiseNewPeer(newPeer Peer, c net.PacketConn) {
 		if peer.ID == newPeer.ID {
 			continue
 		}
-		if _, err = c.WriteTo(msg.Raw, &peer.Addr); err != nil {
+		if _, err = c.WriteTo(msg.Raw, &peer.ExternalAddr); err != nil {
 			log.Printf("ERROR: WriteTo - %v", err)
 		} else {
 			log.Printf("advertise %s to %s", newPeer.String(), peer.String())
@@ -202,7 +214,7 @@ func (s *StunServer) advertiseSessionTable(c net.PacketConn) error {
 	}
 	nerr := 0
 	for _, peer := range peers {
-		if _, err = c.WriteTo(msg.Raw, &peer.Addr); err != nil {
+		if _, err = c.WriteTo(msg.Raw, &peer.ExternalAddr); err != nil {
 			log.Printf("WARNING: failed sent session table message to %s: %v", peer.String(), err)
 			nerr++
 		}
