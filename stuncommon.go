@@ -172,3 +172,22 @@ func localID() (string, error) {
 	}
 	return "", errors.New("CPU serial, active ethernet, and hostname are not available")
 }
+
+func localIPs() []net.IP {
+	ips := make([]net.IP, 0, 5)
+	if ifaces, err := net.Interfaces(); err == nil {
+		for _, iface := range ifaces {
+			if addrs, err := iface.Addrs(); err == nil {
+				for _, addr := range addrs {
+					switch ip := addr.(type) {
+					case *net.IPNet:
+						ips = append(ips, ip.IP)
+					case *net.IPAddr:
+						ips = append(ips, ip.IP)
+					}
+				}
+			}
+		}
+	}
+	return ips
+}
