@@ -8,14 +8,14 @@ graph TD;
 	binding -->|error| bindError;
 	bindError -->|underLimit| opened;
 	bindError -->|overLimit| closed;
-	binding -->|success| receivingData;
-	receivingData -->|close| closed;
-	receivingData -->|success| processingData;
-	receivingData -->|error| dataError;
-	receivingData -->|channelExpired| binding;
-	processingData -->|success| receivingData;
+	binding -->|success| readingData;
+	readingData -->|close| closed;
+	readingData -->|success| processingData;
+	readingData -->|error| dataError;
+	readingData -->|channelExpired| binding;
+	processingData -->|success| readingData;
 	processingData -->|error| dataError;
-	dataError -->|underLimit| receivingData;
+	dataError -->|underLimit| readingData;
 	dataError -->|overLimit| binding;
 ```
 

@@ -75,13 +75,13 @@ func NewOverlay(id string, rendezvousAddr, localAddr *net.UDPAddr, dataHandler D
 }
 
 const (
-	bindErrorsLimit       = 5
-	bindingDeadline       = 30 * time.Second
-	dataErrorsLimit       = 5
-	receivingDataDeadline = 30 * time.Second
-	backoffDuration       = 10 * time.Second
-	bufferSize            = 64 * 1024 // buffer size to read UDP packet
-	channelDuration       = 45 * time.Second
+	bindErrorsLimit     = 5
+	bindingDeadline     = 30 * time.Second
+	dataErrorsLimit     = 5
+	readingDataDeadline = 30 * time.Second
+	backoffDuration     = 10 * time.Second
+	bufferSize          = 64 * 1024 // buffer size to read UDP packet
+	channelDuration     = 45 * time.Second
 )
 
 const (
@@ -89,7 +89,7 @@ const (
 	stateOpened
 	stateBinding
 	stateBindError
-	stateReceivingData
+	stateReadingData
 	stateProcessingData
 	stateDataError
 )
@@ -112,24 +112,24 @@ func (overlay *Overlay) createAutomata() {
 			transition{src: stateClosed, event: eventOpen, dest: stateOpened},
 			transition{src: stateOpened, event: eventClose, dest: stateClosed},
 			transition{src: stateOpened, event: eventBind, dest: stateBinding},
-			transition{src: stateBinding, event: eventSuccess, dest: stateReceivingData},
+			transition{src: stateBinding, event: eventSuccess, dest: stateReadingData},
 			transition{src: stateBinding, event: eventError, dest: stateBindError},
 			transition{src: stateBindError, event: eventUnderLimit, dest: stateOpened},
 			transition{src: stateBindError, event: eventOverLimit, dest: stateClosed},
-			transition{src: stateReceivingData, event: eventClose, dest: stateClosed},
-			transition{src: stateReceivingData, event: eventSuccess, dest: stateProcessingData},
-			transition{src: stateReceivingData, event: eventError, dest: stateDataError},
-			transition{src: stateReceivingData, event: eventChannelExpired, dest: stateBinding},
-			transition{src: stateProcessingData, event: eventSuccess, dest: stateReceivingData},
+			transition{src: stateReadingData, event: eventClose, dest: stateClosed},
+			transition{src: stateReadingData, event: eventSuccess, dest: stateProcessingData},
+			transition{src: stateReadingData, event: eventError, dest: stateDataError},
+			transition{src: stateReadingData, event: eventChannelExpired, dest: stateBinding},
+			transition{src: stateProcessingData, event: eventSuccess, dest: stateReadingData},
 			transition{src: stateProcessingData, event: eventError, dest: stateDataError},
-			transition{src: stateDataError, event: eventUnderLimit, dest: stateReceivingData},
+			transition{src: stateDataError, event: eventUnderLimit, dest: stateReadingData},
 			transition{src: stateDataError, event: eventOverLimit, dest: stateBinding},
 		},
 		callbacks{
 			stateOpened:         overlay.opened,
 			stateBinding:        overlay.binding,
 			stateBindError:      overlay.bindError,
-			stateReceivingData:  overlay.receivingData,
+			stateReadingData:    overlay.readingData,
 			stateProcessingData: overlay.processingData,
 			stateDataError:      overlay.dataError,
 			stateClosed:         overlay.closed,
@@ -240,9 +240,9 @@ func (overlay *Overlay) bindError() {
 	}
 }
 
-func (overlay *Overlay) receivingData() {
+func (overlay *Overlay) readingData() {
 	var (
-		deadline = time.Now().Add(receivingDataDeadline)
+		deadline = time.Now().Add(readingDataDeadline)
 		buf      = make([]byte, bufferSize)
 
 		n    int
