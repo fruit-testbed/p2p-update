@@ -65,7 +65,7 @@ type Overlay struct {
 	localAddr      *net.UDPAddr
 	externalAddr   stun.XORMappedAddress
 
-	sessionTable SessionTable
+	peers map[string]*Peer
 
 	automata *automata
 	conn     *overlayConn
@@ -87,6 +87,7 @@ func NewOverlay(id string, rendezvousAddr, localAddr *net.UDPAddr, dataHandler D
 		Reopen:         true,
 		rendezvousAddr: rendezvousAddr,
 		localAddr:      localAddr,
+		peers:          make(map[string]*Peer),
 		req:            new(stun.Message),
 		res:            new(stun.Message),
 	}
@@ -347,7 +348,12 @@ func (overlay *Overlay) processingMessage() {
 		log.Println("failed to get peerID:", err)
 		overlay.automata.event(eventError)
 	} else if overlay.req.Type == stunBindingIndication {
-		overlay.processingBindingIndication()
+		if err = overlay.processSessionTable(); err != nil {
+			log.Println("failed prcessing session table:", err)
+			overlay.automata.event(eventError)
+		} else {
+			overlay.automata.event(eventSuccess)
+		}
 	} else if overlay.req.Type == stunDataRequest &&
 		overlay.req.Contains(stun.AttrData) &&
 		overlay.DataHandler != nil {
@@ -362,27 +368,31 @@ func (overlay *Overlay) processingMessage() {
 	}
 }
 
-func (overlay *Overlay) processingBindingIndication() {
+func (overlay *Overlay) processSessionTable() error {
 	var (
-		peer *Peer
-		err  error
+		st  *SessionTable
+		err error
 	)
 
-	if peer, err = GetPeerFrom(overlay.req); err != nil {
-		log.Println("cannot get peer address")
-	} else if err = overlay.bindChannelPeer(peer); err != nil {
-		log.Printf("failed binding channel to %s - %v", peer.String(), err)
-		overlay.automata.event(eventError)
-	} else {
-		log.Printf("-> binding channel to %s", peer.String())
-		overlay.sessionTable[peer.ID] = *peer
-		overlay.automata.event(eventSuccess)
+	if st, err = GetSessionTableFrom(overlay.req); err != nil {
+		return err
 	}
+	for _, peer := range *st {
+		if err = overlay.bindChannelPeer(&peer); err != nil {
+			log.Printf("WARNING: failed binding channel to %s - %v", peer.String(), err)
+		} else {
+			log.Printf("-> send empty packet to opening channel to %s", peer.String())
+		}
+	}
+	return nil
 }
 
 func (overlay *Overlay) bindChannelPeer(peer *Peer) error {
-	_, err := overlay.conn.conn.WriteToUDP([]byte{}, &peer.Addr)
-	return err
+	if _, err := overlay.conn.conn.WriteToUDP([]byte{}, &peer.Addr); err != nil {
+		return err
+	}
+	overlay.peers[peer.ID] = peer
+	return nil
 }
 
 func (overlay *Overlay) processingDataRequest(peer *Peer) {

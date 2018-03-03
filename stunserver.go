@@ -146,7 +146,7 @@ func (s *StunServer) advertiseNewPeer(newPeer Peer, c net.PacketConn) {
 		stunBindingIndication,
 		stunSoftware,
 		stun.NewUsername(s.ID),
-		newPeer,
+		SessionTable{newPeer.ID: newPeer},
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
 	)
