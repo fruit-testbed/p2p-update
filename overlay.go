@@ -343,16 +343,16 @@ func (overlay *Overlay) processingMessage(data []interface{}) {
 	}
 
 	if !stun.IsMessage(msg) {
-		log.Printf("!!! the message is not a STUN message")
+		log.Printf("!!! %s sent a message that is not a STUN message", peer.Addr.String())
 		overlay.automata.event(eventError)
 	} else if _, err = req.Write(msg); err != nil {
-		log.Println("failed to read message:", err)
+		log.Printf("failed to read message from %s: %v", peer.Addr.String(), err)
 		overlay.automata.event(eventError)
 	} else if err = validateMessage(&req, nil); err != nil {
-		log.Println("invalid STUN message:", err)
+		log.Printf("%s sent invalid STUN message: %v", peer.Addr.String(), err)
 		overlay.automata.event(eventError)
 	} else if err = username.GetFrom(&req); err != nil {
-		log.Println("failed to get peerID:", err)
+		log.Printf("failed to get peerID of %s: %v", peer.Addr.String(), err)
 		overlay.automata.event(eventError)
 	} else {
 		peer.ID = username.String()
@@ -367,7 +367,7 @@ func (overlay *Overlay) processingMessage(data []interface{}) {
 			req.Contains(stun.AttrData) &&
 			overlay.DataHandler != nil {
 			if err = overlay.processDataRequest(&req, &res, &peer); err != nil {
-				log.Printf("ERROR: failed processing data request: %v", err)
+				log.Printf("ERROR: failed processing data request of %s: %v", peer.String(), err)
 				overlay.automata.event(eventError)
 			} else {
 				overlay.automata.event(eventSuccess)
