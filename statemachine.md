@@ -2,7 +2,9 @@
 
 ```mermaid
 graph TD;
-	closed -->|open| opened;
+	closed -->|open| opening;
+	opening -->|success| opened;
+	opening -->|error| closed;
 	opened -->|close| closed;
 	opened -->|bind| binding;
 	binding -->|error| bindError;

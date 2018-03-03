@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"time"
@@ -12,27 +13,42 @@ import (
 type overlayConn struct {
 	conn           *net.UDPConn
 	rendezvousAddr *net.UDPAddr
-	localAddr      *net.UDPAddr
-	extAddr        stun.XORMappedAddress
 }
 
-func (oc *overlayConn) Open() error {
-	var err error
-	if oc.conn, err = net.ListenUDP("udp", oc.localAddr); err != nil {
-		return errors.Wrap(err, "failed creating UDP connection")
+func NewOverlayConn(rendezvousAddr, localAddr *net.UDPAddr) (*overlayConn, error) {
+	var (
+		conn *net.UDPConn
+		err  error
+	)
+
+	if conn, err = net.ListenUDP("udp", localAddr); err != nil {
+		return nil, errors.Wrap(err, "failed creating UDP connection")
 	}
-	return nil
+	log.Println("connection is opened at", conn.LocalAddr().String())
+	return &overlayConn{
+		conn:           conn,
+		rendezvousAddr: rendezvousAddr,
+	}, nil
 }
 
 func (oc *overlayConn) Read(p []byte) (n int, err error) {
+	if oc.conn == nil {
+		return -1, fmt.Errorf("connection is not opened")
+	}
 	return oc.conn.Read(p)
 }
 
 func (oc *overlayConn) Write(p []byte) (n int, err error) {
+	if oc.conn == nil {
+		return -1, fmt.Errorf("connection is not opened")
+	}
 	return oc.conn.WriteToUDP(p, oc.rendezvousAddr)
 }
 
 func (oc *overlayConn) Close() error {
+	if oc.conn == nil {
+		return nil
+	}
 	return oc.conn.Close()
 }
 
@@ -44,6 +60,10 @@ type Overlay struct {
 	ID          string
 	DataHandler DataHandler
 	Reopen      bool
+
+	rendezvousAddr *net.UDPAddr
+	localAddr      *net.UDPAddr
+	externalAddr   stun.XORMappedAddress
 
 	automata *automata
 	conn     *overlayConn
@@ -60,32 +80,31 @@ type Overlay struct {
 
 func NewOverlay(id string, rendezvousAddr, localAddr *net.UDPAddr, dataHandler DataHandler) (*Overlay, error) {
 	overlay := &Overlay{
-		ID: id,
-		conn: &overlayConn{
-			rendezvousAddr: rendezvousAddr,
-			localAddr:      localAddr,
-		},
-		DataHandler: dataHandler,
-		Reopen:      true,
-		req:         new(stun.Message),
-		res:         new(stun.Message),
+		ID:             id,
+		DataHandler:    dataHandler,
+		Reopen:         true,
+		rendezvousAddr: rendezvousAddr,
+		localAddr:      localAddr,
+		req:            new(stun.Message),
+		res:            new(stun.Message),
 	}
 	overlay.createAutomata()
 	return overlay, nil
 }
 
 const (
-	bindErrorsLimit     = 5
-	bindingDeadline     = 30 * time.Second
-	dataErrorsLimit     = 5
-	readingDataDeadline = 30 * time.Second
-	backoffDuration     = 10 * time.Second
+	bindErrorsLimit     = 3
+	bindingDeadline     = 3 * time.Second
+	dataErrorsLimit     = 3
+	readingDataDeadline = 3 * time.Second
+	backoffDuration     = 3 * time.Second
 	bufferSize          = 64 * 1024 // buffer size to read UDP packet
-	channelDuration     = 45 * time.Second
+	channelDuration     = 10 * time.Second
 )
 
 const (
 	stateClosed = iota
+	stateOpening
 	stateOpened
 	stateBinding
 	stateBindError
@@ -109,7 +128,9 @@ func (overlay *Overlay) createAutomata() {
 	overlay.automata = NewAutomata(
 		stateClosed,
 		[]transition{
-			transition{src: stateClosed, event: eventOpen, dest: stateOpened},
+			transition{src: stateClosed, event: eventOpen, dest: stateOpening},
+			transition{src: stateOpening, event: eventSuccess, dest: stateOpened},
+			transition{src: stateOpening, event: eventError, dest: stateClosed},
 			transition{src: stateOpened, event: eventClose, dest: stateClosed},
 			transition{src: stateOpened, event: eventBind, dest: stateBinding},
 			transition{src: stateBinding, event: eventSuccess, dest: stateReadingData},
@@ -126,6 +147,7 @@ func (overlay *Overlay) createAutomata() {
 			transition{src: stateDataError, event: eventOverLimit, dest: stateBinding},
 		},
 		callbacks{
+			stateOpening:        overlay.opening,
 			stateOpened:         overlay.opened,
 			stateBinding:        overlay.binding,
 			stateBindError:      overlay.bindError,
@@ -147,13 +169,20 @@ func (overlay *Overlay) Close() error {
 
 func (overlay *Overlay) closed() {
 	log.Println("closing")
+
+	conn, stun := overlay.conn, overlay.stun
 	go func() {
-		if err := overlay.stun.Close(); err != nil {
-			log.Printf("failed to close connection: %v", err)
-		} else {
-			log.Println("stun client closed")
+		if conn != nil {
+			conn.Close()
 		}
+		if stun != nil {
+			stun.Close()
+		}
+		log.Println("old conn and stun are closed")
 	}()
+
+	overlay.conn = nil
+	overlay.stun = nil
 	overlay.errCount = 0
 	log.Println("closed")
 
@@ -165,19 +194,30 @@ func (overlay *Overlay) closed() {
 	}
 }
 
-func (overlay *Overlay) opened() {
+func (overlay *Overlay) opening() {
 	var err error
 
-	if err = overlay.conn.Open(); err != nil {
-		log.Printf("failed opening UDP connection: %v", err)
+	if overlay.conn, err = NewOverlayConn(overlay.rendezvousAddr, overlay.localAddr); err != nil {
+		log.Printf("failed opening UDP connection (backing off for %v): %v",
+			backoffDuration, err)
+		time.Sleep(backoffDuration)
+		overlay.automata.event(eventError)
+	} else {
+		overlay.stun, err = stun.NewClient(
+			stun.ClientOptions{
+				Connection: overlay.conn,
+			})
+		if err != nil {
+			log.Printf("failed dialing the STUN server at %s (backing off for %v) - %v",
+				backoffDuration, overlay.rendezvousAddr, err)
+			overlay.automata.event(eventError)
+		} else {
+			overlay.automata.event(eventSuccess)
+		}
 	}
-	overlay.stun, err = stun.NewClient(
-		stun.ClientOptions{
-			Connection: overlay.conn,
-		})
-	if err != nil {
-		log.Printf("Failed dialing the STUN server at %s - %v", overlay.conn.rendezvousAddr, err)
-	}
+}
+
+func (overlay *Overlay) opened() {
 	overlay.automata.event(eventBind)
 }
 
@@ -196,11 +236,11 @@ func (overlay *Overlay) binding() {
 		} else if err := validateMessage(e.Message, &stun.BindingSuccess); err != nil {
 			log.Println("bindingError", errors.Wrap(err, "bindReq received an invalid message:"))
 			overlay.automata.event(eventError)
-		} else if err = overlay.conn.extAddr.GetFrom(e.Message); err != nil {
+		} else if err = overlay.externalAddr.GetFrom(e.Message); err != nil {
 			log.Println("Failed getting mapped address:", err)
 			overlay.automata.event(eventError)
 		} else {
-			log.Println("XORMappedAddress", overlay.conn.extAddr)
+			log.Println("XORMappedAddress", overlay.externalAddr)
 			log.Println("LocalAddr", overlay.conn.conn.LocalAddr())
 			log.Println("RemoteAddr", overlay.conn.conn.RemoteAddr())
 			log.Println("bindingSuccess")
