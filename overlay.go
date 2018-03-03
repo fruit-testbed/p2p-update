@@ -235,6 +235,9 @@ func (overlay *Overlay) binding([]interface{}) {
 		} else if err = overlay.externalAddr.GetFrom(e.Message); err != nil {
 			log.Println("failed getting mapped address:", err)
 			overlay.automata.event(eventError)
+		} else if err = overlay.processSessionTable(e.Message, new(stun.Message)); err != nil {
+			log.Println("failed processing session table:", err)
+			overlay.automata.event(eventError)
 		} else {
 			log.Println("XORMappedAddress", overlay.externalAddr)
 			log.Println("LocalAddr", overlay.conn.conn.LocalAddr())
