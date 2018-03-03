@@ -73,11 +73,6 @@ type Overlay struct {
 	errCount int
 
 	channelExpired time.Time
-
-	addr *net.UDPAddr
-	msg  []byte
-	res  *stun.Message
-	req  *stun.Message
 }
 
 func NewOverlay(id string, rendezvousAddr, localAddr *net.UDPAddr, dataHandler DataHandler) (*Overlay, error) {
@@ -88,8 +83,6 @@ func NewOverlay(id string, rendezvousAddr, localAddr *net.UDPAddr, dataHandler D
 		rendezvousAddr: rendezvousAddr,
 		localAddr:      localAddr,
 		peers:          make(map[string]*Peer),
-		req:            new(stun.Message),
-		res:            new(stun.Message),
 	}
 	overlay.createAutomata()
 	return overlay, nil
@@ -170,7 +163,7 @@ func (overlay *Overlay) Close() error {
 	return overlay.automata.event(eventClose)
 }
 
-func (overlay *Overlay) closed() {
+func (overlay *Overlay) closed([]interface{}) {
 	log.Println("closing")
 
 	conn, stun := overlay.conn, overlay.stun
@@ -197,7 +190,7 @@ func (overlay *Overlay) closed() {
 	}
 }
 
-func (overlay *Overlay) opening() {
+func (overlay *Overlay) opening([]interface{}) {
 	var err error
 
 	if overlay.conn, err = NewOverlayConn(overlay.rendezvousAddr, overlay.localAddr); err != nil {
@@ -220,11 +213,11 @@ func (overlay *Overlay) opening() {
 	}
 }
 
-func (overlay *Overlay) opened() {
+func (overlay *Overlay) opened([]interface{}) {
 	overlay.automata.event(eventBind)
 }
 
-func (overlay *Overlay) binding() {
+func (overlay *Overlay) binding([]interface{}) {
 	var err error
 
 	deadline := time.Now().Add(bindingDeadline)
@@ -240,12 +233,11 @@ func (overlay *Overlay) binding() {
 			log.Println("bindingError", errors.Wrap(err, "bindReq received an invalid message:"))
 			overlay.automata.event(eventError)
 		} else if err = overlay.externalAddr.GetFrom(e.Message); err != nil {
-			log.Println("Failed getting mapped address:", err)
+			log.Println("failed getting mapped address:", err)
 			overlay.automata.event(eventError)
 		} else {
 			log.Println("XORMappedAddress", overlay.externalAddr)
 			log.Println("LocalAddr", overlay.conn.conn.LocalAddr())
-			log.Println("RemoteAddr", overlay.conn.conn.RemoteAddr())
 			log.Println("bindingSuccess")
 			overlay.channelExpired = time.Now().Add(channelDuration)
 			overlay.automata.event(eventSuccess)
@@ -272,7 +264,7 @@ func (overlay *Overlay) bindingRequestMessage() *stun.Message {
 	)
 }
 
-func (overlay *Overlay) bindError() {
+func (overlay *Overlay) bindError([]interface{}) {
 	overlay.errCount++
 	if overlay.errCount >= bindErrorsLimit {
 		overlay.errCount = 0
@@ -283,7 +275,7 @@ func (overlay *Overlay) bindError() {
 	}
 }
 
-func (overlay *Overlay) listening() {
+func (overlay *Overlay) listening([]interface{}) {
 	var (
 		deadline = time.Now().Add(readingDataDeadline)
 		buf      = make([]byte, bufferSize)
@@ -312,74 +304,86 @@ func (overlay *Overlay) listening() {
 		switch peer := addr.(type) {
 		case *net.UDPAddr:
 			log.Printf("<- received a message from %s", peer.String())
-			overlay.addr = peer
-			overlay.msg = buf[:n]
-			overlay.automata.event(eventSuccess)
+			overlay.automata.event(eventSuccess, peer, buf[:n])
 		default:
-			log.Printf("unknown addr: %v", overlay.addr)
+			log.Printf("unknown addr: %v", addr)
 			overlay.automata.event(eventError)
 		}
 
 	}
 }
 
-func (overlay *Overlay) processingMessage() {
+func (overlay *Overlay) processingMessage(data []interface{}) {
+	if len(data) < 2 {
+		log.Fatalln("ERROR: processingMessage should receive two arguments from listening")
+	}
+
 	var (
 		username stun.Username
+		peer     Peer
+		msg      []byte
+		req, res stun.Message
 		err      error
 	)
 
-	defer func() {
-		overlay.addr, overlay.msg = nil, nil
-		overlay.req.Reset()
-		overlay.res.Reset()
-	}()
+	switch addr := data[0].(type) {
+	case *net.UDPAddr:
+		peer.Addr = *addr
+	default:
+		log.Fatalln("ERROR: first argument is not *Peer")
+	}
 
-	if !stun.IsMessage(overlay.msg) {
+	switch m := data[1].(type) {
+	case []byte:
+		msg = m
+	default:
+		log.Fatalln("ERROR: second argument is not []byte")
+	}
+
+	if !stun.IsMessage(msg) {
 		log.Printf("the message is not a STUN message")
 		overlay.automata.event(eventError)
-	} else if _, err = overlay.req.Write(overlay.msg); err != nil {
+	} else if _, err = req.Write(msg); err != nil {
 		log.Println("failed to read message:", err)
 		overlay.automata.event(eventError)
-	} else if err = validateMessage(overlay.req, nil); err != nil {
+	} else if err = validateMessage(&req, nil); err != nil {
 		log.Println("invalid STUN message:", err)
 		overlay.automata.event(eventError)
-	} else if err = username.GetFrom(overlay.req); err != nil {
+	} else if err = username.GetFrom(&req); err != nil {
 		log.Println("failed to get peerID:", err)
 		overlay.automata.event(eventError)
-	} else if overlay.req.Type == stunBindingIndication {
-		if err = overlay.processSessionTable(); err != nil {
-			log.Println("failed prcessing session table:", err)
-			overlay.automata.event(eventError)
-		} else {
-			overlay.automata.event(eventSuccess)
-		}
-	} else if overlay.req.Type == stunDataRequest &&
-		overlay.req.Contains(stun.AttrData) &&
-		overlay.DataHandler != nil {
-		peer := &Peer{
-			ID:   username.String(),
-			Addr: *overlay.addr,
-		}
-		if err = overlay.processDataRequest(peer); err != nil {
-			log.Printf("ERROR: failed processing data request: %v", err)
-			overlay.automata.event(eventError)
-		} else {
-			overlay.automata.event(eventSuccess)
-		}
 	} else {
-		log.Printf("ignored STUN message from %s", overlay.addr.String())
-		overlay.automata.event(eventError)
+		peer.ID = username.String()
+		if req.Type == stunBindingIndication {
+			if err = overlay.processSessionTable(&req, &res); err != nil {
+				log.Println("failed prcessing session table:", err)
+				overlay.automata.event(eventError)
+			} else {
+				overlay.automata.event(eventSuccess)
+			}
+		} else if req.Type == stunDataRequest &&
+			req.Contains(stun.AttrData) &&
+			overlay.DataHandler != nil {
+			if err = overlay.processDataRequest(&req, &res, &peer); err != nil {
+				log.Printf("ERROR: failed processing data request: %v", err)
+				overlay.automata.event(eventError)
+			} else {
+				overlay.automata.event(eventSuccess)
+			}
+		} else {
+			log.Printf("ignored STUN message from %s", peer.String())
+			overlay.automata.event(eventError)
+		}
 	}
 }
 
-func (overlay *Overlay) processSessionTable() error {
+func (overlay *Overlay) processSessionTable(req, res *stun.Message) error {
 	var (
 		st  *SessionTable
 		err error
 	)
 
-	if st, err = GetSessionTableFrom(overlay.req); err != nil {
+	if st, err = GetSessionTableFrom(req); err != nil {
 		return err
 	}
 	for _, peer := range *st {
@@ -400,35 +404,35 @@ func (overlay *Overlay) bindChannelPeer(peer *Peer) error {
 	return nil
 }
 
-func (overlay *Overlay) processDataRequest(peer *Peer) error {
+func (overlay *Overlay) processDataRequest(req, res *stun.Message, peer *Peer) error {
 	var (
 		data []byte
 		err  error
 	)
 
-	if data, err = overlay.req.Get(stun.AttrData); err != nil {
+	if data, err = req.Get(stun.AttrData); err != nil {
 		return fmt.Errorf("invalid data request from %s", peer.String())
 	} else if err = overlay.DataHandler.HandleData(data, peer); err != nil {
 		log.Println("DataHandler returned an error:", err)
-		if err = overlay.buildDataErrorMessage(stun.CodeServerError); err != nil {
+		if err = overlay.buildDataErrorMessage(req, res, stun.CodeServerError); err != nil {
 			return err
 		}
 	} else {
 		log.Println("Successfully processing data")
-		if err = overlay.buildDataSuccessMessage(); err != nil {
+		if err = overlay.buildDataSuccessMessage(req, res); err != nil {
 			return err
 		}
 	}
-	if _, err = overlay.conn.conn.WriteToUDP(overlay.res.Raw, overlay.addr); err != nil {
+	if _, err = overlay.conn.conn.WriteToUDP(res.Raw, &peer.Addr); err != nil {
 		return errors.Wrapf(err, "failed send response to %s", peer.String())
 	}
 	log.Printf("-> sent response to %s", peer.String())
 	return nil
 }
 
-func (overlay *Overlay) buildDataErrorMessage(ec stun.ErrorCode) error {
-	return overlay.res.Build(
-		stun.NewTransactionIDSetter(overlay.req.TransactionID),
+func (overlay *Overlay) buildDataErrorMessage(req, res *stun.Message, ec stun.ErrorCode) error {
+	return res.Build(
+		stun.NewTransactionIDSetter(req.TransactionID),
 		stunDataError,
 		ec,
 		stunSoftware,
@@ -438,9 +442,9 @@ func (overlay *Overlay) buildDataErrorMessage(ec stun.ErrorCode) error {
 	)
 }
 
-func (overlay *Overlay) buildDataSuccessMessage() error {
-	return overlay.res.Build(
-		stun.NewTransactionIDSetter(overlay.req.TransactionID),
+func (overlay *Overlay) buildDataSuccessMessage(req, res *stun.Message) error {
+	return res.Build(
+		stun.NewTransactionIDSetter(req.TransactionID),
 		stunDataSuccess,
 		stunSoftware,
 		stun.NewUsername(overlay.ID),
@@ -449,7 +453,7 @@ func (overlay *Overlay) buildDataSuccessMessage() error {
 	)
 }
 
-func (overlay *Overlay) messageError() {
+func (overlay *Overlay) messageError([]interface{}) {
 	overlay.errCount++
 	if overlay.errCount >= dataErrorsLimit {
 		overlay.errCount = 0

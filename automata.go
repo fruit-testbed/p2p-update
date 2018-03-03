@@ -21,7 +21,9 @@ type transition struct {
 
 type transitions map[int]map[int]int
 
-type callbacks map[int]func()
+type callback func(data []interface{})
+
+type callbacks map[int]callback
 
 func NewAutomata(current int, ts []transition, callbacks callbacks) *automata {
 	fsm := &automata{
@@ -38,11 +40,11 @@ func NewAutomata(current int, ts []transition, callbacks callbacks) *automata {
 	return fsm
 }
 
-func (a *automata) event(event int) error {
+func (a *automata) event(event int, data ...interface{}) error {
 	var (
 		dest int
 		ok   bool
-		cb   func()
+		cb   callback
 	)
 	if dest, ok = a.transitions[a.current][event]; ok {
 		a.Lock()
@@ -50,7 +52,7 @@ func (a *automata) event(event int) error {
 		a.current = dest
 		a.Unlock()
 		if cb, ok = a.callbacks[a.current]; ok {
-			cb()
+			cb(data)
 		}
 		return nil
 	}
