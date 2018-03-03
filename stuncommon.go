@@ -19,9 +19,10 @@ var (
 	stunSoftware = stun.NewSoftware("fruit/p2psecureupdate")
 	stunPassword = "123"
 
-	stunDataRequest = stun.NewType(stun.MethodData, stun.ClassRequest)
-	stunDataSuccess = stun.NewType(stun.MethodData, stun.ClassSuccessResponse)
-	stunDataError   = stun.NewType(stun.MethodData, stun.ClassErrorResponse)
+	stunDataRequest       = stun.NewType(stun.MethodData, stun.ClassRequest)
+	stunDataSuccess       = stun.NewType(stun.MethodData, stun.ClassSuccessResponse)
+	stunDataError         = stun.NewType(stun.MethodData, stun.ClassErrorResponse)
+	stunBindingIndication = stun.NewType(stun.MethodBinding, stun.ClassIndication)
 
 	stunReplyTimeout = time.Second * 5
 
@@ -30,48 +31,63 @@ var (
 
 type Peer struct {
 	ID   string
-	IP   net.IP
-	Port int
+	Addr net.UDPAddr
 }
 
 func (p Peer) String() string {
-	return fmt.Sprintf("%s[%v[%d]]", p.ID, p.IP, p.Port)
+	return fmt.Sprintf("%s[%s]", p.ID, p.Addr.String())
+}
+
+func (p Peer) AddTo(m *stun.Message) error {
+	var (
+		data []byte
+		err  error
+	)
+
+	if data, err = msgpack.Marshal(&p); err == nil {
+		m.Add(stun.AttrData, data)
+	}
+	return err
+}
+
+func GetPeerFrom(m *stun.Message) (*Peer, error) {
+	var (
+		p    Peer
+		data []byte
+		err  error
+	)
+
+	if data, err = m.Get(stun.AttrData); err == nil {
+		err = msgpack.Unmarshal(data, &p)
+	}
+	return &p, err
 }
 
 type SessionTable map[string]Peer
-
-func (st SessionTable) marshal() ([]byte, error) {
-	return msgpack.Marshal(&st)
-}
 
 func (st SessionTable) AddTo(m *stun.Message) error {
 	var (
 		data []byte
 		err  error
 	)
-	if data, err = st.marshal(); err == nil {
+
+	if data, err = msgpack.Marshal(&st); err == nil {
 		m.Add(stun.AttrData, data)
 	}
 	return err
 }
 
-func getSessionTable(m *stun.Message) (SessionTable, error) {
+func GetSessionTableFrom(m *stun.Message) (*SessionTable, error) {
 	var (
+		st   SessionTable
 		data []byte
 		err  error
 	)
-	if data, err = m.Get(stun.AttrData); err == nil {
-		return unmarshalSessionTable(data)
-	}
-	return nil, err
-}
 
-func unmarshalSessionTable(raw []byte) (SessionTable, error) {
-	var st SessionTable
-	if err := msgpack.Unmarshal(raw, &st); err != nil {
-		return nil, err
+	if data, err = m.Get(stun.AttrData); err == nil {
+		err = msgpack.Unmarshal(data, &st)
 	}
-	return st, nil
+	return &st, err
 }
 
 func validateMessage(m *stun.Message, t *stun.MessageType) error {

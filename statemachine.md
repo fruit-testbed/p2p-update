@@ -10,14 +10,14 @@ graph TD;
 	binding -->|error| bindError;
 	bindError -->|underLimit| opened;
 	bindError -->|overLimit| closed;
-	binding -->|success| readingData;
-	readingData -->|close| closed;
-	readingData -->|success| processingData;
-	readingData -->|error| dataError;
-	readingData -->|channelExpired| binding;
-	processingData -->|success| readingData;
-	processingData -->|error| dataError;
-	dataError -->|underLimit| readingData;
-	dataError -->|overLimit| binding;
+	binding -->|success| listening;
+	listening -->|close| closed;
+	listening -->|success| processingMessage;
+	listening -->|error| messageError;
+	listening -->|channelExpired| binding;
+	processingMessage -->|success| listening;
+	processingMessage -->|error| messageError;
+	messageError -->|underLimit| listening;
+	messageError -->|overLimit| binding;
 ```
 
