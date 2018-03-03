@@ -5,12 +5,18 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/gortc/stun"
 	"github.com/pkg/errors"
 )
 
+const (
+	advertiseSessionTableSleepTime = 60 * time.Second
+)
+
 type StunServer struct {
+	sync.RWMutex
 	Address string
 	ID      string
 	peers   SessionTable
@@ -37,6 +43,18 @@ func (s *StunServer) run(wg *sync.WaitGroup) {
 		log.Println(err)
 		return
 	}
+
+	go func() {
+		log.Printf("start a thread that advertises session table every %ss",
+			advertiseSessionTableSleepTime)
+		for {
+			time.Sleep(advertiseSessionTableSleepTime)
+			if err := s.advertiseSessionTable(conn); err != nil {
+				log.Println(err)
+			}
+		}
+	}()
+
 	log.Printf("Serving at %s with id:%s", s.Address, s.ID)
 	if err = s.serve(conn); err != nil {
 		log.Println(err)
@@ -164,4 +182,31 @@ func (s *StunServer) advertiseNewPeer(newPeer Peer, c net.PacketConn) {
 			log.Printf("advertise %s to %s", newPeer.String(), peer.String())
 		}
 	}
+}
+
+func (s *StunServer) advertiseSessionTable(c net.PacketConn) error {
+	s.RLock()
+	peers := s.peers
+	s.RUnlock()
+	msg, err := stun.Build(
+		stun.TransactionID,
+		stunBindingIndication,
+		stunSoftware,
+		stun.NewUsername(s.ID),
+		peers,
+		stun.NewShortTermIntegrity(stunPassword),
+		stun.Fingerprint,
+	)
+	if err != nil {
+		errors.Wrap(err, "cannot build message to advertise session table: %v")
+	}
+	nerr := 0
+	for _, peer := range peers {
+		if _, err = c.WriteTo(msg.Raw, &peer.Addr); err != nil {
+			log.Printf("WARNING: failed sent session table message to %s: %v", peer.String(), err)
+			nerr++
+		}
+	}
+	log.Printf("sent session table to %d peers with %d failures", len(peers), nerr)
+	return nil
 }
