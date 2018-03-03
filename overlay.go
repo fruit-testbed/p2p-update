@@ -89,13 +89,13 @@ func NewOverlay(id string, rendezvousAddr, localAddr *net.UDPAddr, dataHandler D
 }
 
 const (
-	bindErrorsLimit     = 3
-	bindingDeadline     = 3 * time.Second
-	dataErrorsLimit     = 3
-	readingDataDeadline = 3 * time.Second
-	backoffDuration     = 3 * time.Second
+	bindErrorsLimit     = 10
+	bindingDeadline     = 30 * time.Second
+	dataErrorsLimit     = 10
+	readingDataDeadline = 30 * time.Second
+	backoffDuration     = 10 * time.Second
 	bufferSize          = 64 * 1024 // buffer size to read UDP packet
-	channelDuration     = 10 * time.Second
+	channelDuration     = 60 * time.Second
 )
 
 const (
@@ -312,7 +312,6 @@ func (overlay *Overlay) listening([]interface{}) {
 			log.Printf("unknown addr: %v", addr)
 			overlay.automata.event(eventError)
 		}
-
 	}
 }
 
@@ -344,7 +343,7 @@ func (overlay *Overlay) processingMessage(data []interface{}) {
 	}
 
 	if !stun.IsMessage(msg) {
-		log.Printf("the message is not a STUN message")
+		log.Printf("!!! the message is not a STUN message")
 		overlay.automata.event(eventError)
 	} else if _, err = req.Write(msg); err != nil {
 		log.Println("failed to read message:", err)
@@ -374,7 +373,7 @@ func (overlay *Overlay) processingMessage(data []interface{}) {
 				overlay.automata.event(eventSuccess)
 			}
 		} else {
-			log.Printf("ignored STUN message from %s", peer.String())
+			log.Printf("!!! ignored STUN message from %s", peer.String())
 			overlay.automata.event(eventError)
 		}
 	}
@@ -390,6 +389,9 @@ func (overlay *Overlay) processSessionTable(req, res *stun.Message) error {
 		return err
 	}
 	for _, peer := range *st {
+		if peer.ID == overlay.ID {
+			continue
+		}
 		if err = overlay.bindChannelPeer(&peer); err != nil {
 			log.Printf("WARNING: failed binding channel to %s - %v", peer.String(), err)
 		} else {
