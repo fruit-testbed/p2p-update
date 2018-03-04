@@ -159,10 +159,6 @@ func (overlay *Overlay) Open() error {
 	return overlay.automata.event(eventOpen)
 }
 
-func (overlay *Overlay) Close() error {
-	return overlay.automata.event(eventClose)
-}
-
 func (overlay *Overlay) closed([]interface{}) {
 	log.Println("closing")
 
@@ -502,5 +498,39 @@ func (overlay *Overlay) messageError([]interface{}) {
 
 func (overlay *Overlay) HandleData(data []byte, peer *Peer) error {
 	log.Printf("handle data from %s\n%s", peer.String(), string(data))
+	return nil
+}
+
+func (o *Overlay) Read(b []byte) (int, error) {
+	// TODO: implement
+	return 0, nil
+}
+
+func (o *Overlay) Write(b []byte) (int, error) {
+	// TODO: implement
+	return 0, nil
+}
+
+func (o *Overlay) Close() error {
+	return o.automata.event(eventClose)
+}
+
+func (o *Overlay) LocalAddr() net.Addr {
+	// TODO: implement
+	return nil
+}
+
+func (o *Overlay) RemoteAddr() net.Addr {
+	// TODO: implement
+	return nil
+}
+
+func (o *Overlay) SetDeadline(t time.Time) error {
+	// TODO: implement
+	return nil
+}
+
+func (o *Overlay) SetWriteDeadline(t time.Time) error {
+	// TODO: implement
 	return nil
 }
