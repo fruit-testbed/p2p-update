@@ -101,7 +101,7 @@ func (s *StunServer) serveConn(c net.PacketConn, res, req *stun.Message) error {
 	}
 	log.Printf("Reply sent: %v", res)
 
-	go s.advertiseNewPeer(s.peers[peerID], c)
+	go s.advertiseNewPeer(peerID, s.peers[peerID], c)
 
 	return err
 }
@@ -143,15 +143,15 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) (string
 	id := username.String()
 	switch peer := addr.(type) {
 	case *net.UDPAddr:
-		s.peers[id] = Peer{
-			ID:           id,
-			ExternalAddr: *peer,
-			InternalAddr: net.UDPAddr{
+		s.peers[id] = []*net.UDPAddr{
+			peer,
+			&net.UDPAddr{
 				IP:   xorAddr.IP,
 				Port: xorAddr.Port,
 			},
 		}
-		log.Printf("Registered peer %s", s.peers[id].String())
+		log.Printf("Registered peer %s[%s][%s]", id, s.peers[id][0].String(),
+			s.peers[id][1].String())
 	default:
 		return "", fmt.Errorf("unknown addr: %v", addr)
 	}
@@ -160,8 +160,8 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) (string
 		stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
 		stunSoftware,
 		&stun.XORMappedAddress{
-			IP:   s.peers[id].ExternalAddr.IP,
-			Port: s.peers[id].ExternalAddr.Port,
+			IP:   s.peers[id][0].IP,
+			Port: s.peers[id][0].Port,
 		},
 		stun.NewUsername(s.ID),
 		s.peers,
@@ -170,28 +170,31 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) (string
 	)
 }
 
-func (s *StunServer) advertiseNewPeer(newPeer Peer, c net.PacketConn) {
+func (s *StunServer) advertiseNewPeer(id string, addrs []*net.UDPAddr, c net.PacketConn) {
 	msg, err := stun.Build(
 		stun.TransactionID,
 		stunBindingIndication,
 		stunSoftware,
 		stun.NewUsername(s.ID),
-		SessionTable{newPeer.ID: newPeer},
+		SessionTable{id: addrs},
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
 	)
 	if err != nil {
-		log.Printf("cannot build message to advertise new peer %s: %v", newPeer, err)
+		log.Printf("cannot build message to advertise new peer %s[%s][%s]: %v",
+			id, addrs[0].String(), addrs[1].String(), err)
 		return
 	}
-	for _, peer := range s.peers {
-		if peer.ID == newPeer.ID {
+	for pid, paddrs := range s.peers {
+		if pid == id {
 			continue
 		}
-		if _, err = c.WriteTo(msg.Raw, &peer.ExternalAddr); err != nil {
+		if _, err = c.WriteTo(msg.Raw, paddrs[0]); err != nil {
 			log.Printf("ERROR: WriteTo - %v", err)
 		} else {
-			log.Printf("advertise %s to %s", newPeer.String(), peer.String())
+			log.Printf("advertise %s[%s][%s] to %s[%s][%s]",
+				id, addrs[0].String(), addrs[1].String(),
+				pid, paddrs[0].String(), paddrs[1].String())
 		}
 	}
 }
@@ -213,9 +216,10 @@ func (s *StunServer) advertiseSessionTable(c net.PacketConn) error {
 		errors.Wrap(err, "cannot build message to advertise session table: %v")
 	}
 	nerr := 0
-	for _, peer := range peers {
-		if _, err = c.WriteTo(msg.Raw, &peer.ExternalAddr); err != nil {
-			log.Printf("WARNING: failed sent session table message to %s: %v", peer.String(), err)
+	for id, addrs := range peers {
+		if _, err = c.WriteTo(msg.Raw, addrs[0]); err != nil {
+			log.Printf("WARNING: failed sent session table message to %s[%s][%s]: %v",
+				id, addrs[0].String(), addrs[1].String(), err)
 			nerr++
 		}
 	}

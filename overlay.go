@@ -405,31 +405,39 @@ func (overlay *Overlay) processingMessage(data []interface{}) {
 
 func (overlay *Overlay) processSessionTable(req, res *stun.Message) error {
 	var (
-		st  *SessionTable
-		err error
+		st   *SessionTable
+		addr *net.UDPAddr
+		err  error
 	)
 
 	if st, err = GetSessionTableFrom(req); err != nil {
 		return err
 	}
-	for _, peer := range *st {
-		if peer.ID == overlay.ID {
+	for id, addrs := range *st {
+		if id == overlay.ID {
 			continue
 		}
-		if err = overlay.bindChannelPeer(&peer); err != nil {
-			log.Printf("WARNING: failed binding channel to %s - %v", peer.String(), err)
+		if addr = addrs[0]; addr.IP.Equal(overlay.externalAddr.IP) {
+			addr = addrs[1]
+		}
+		if err = overlay.bindChannelPeer(addr); err != nil {
+			log.Printf("WARNING: failed binding channel to %s[%s][%s] - %v",
+				id, addrs[0].String(), addrs[1].String(), err)
 		} else {
-			log.Printf("-> sent empty packet to opening channel to %s", peer.String())
+			log.Printf("-> sent empty packet to opening channel to %s[%s][%s] ",
+				id, addrs[0].String(), addrs[1].String())
 		}
 	}
 	return nil
 }
 
-func (overlay *Overlay) bindChannelPeer(peer *Peer) error {
-	if _, err := overlay.conn.conn.WriteToUDP([]byte{}, &peer.ExternalAddr); err != nil {
+func (overlay *Overlay) bindChannelPeer(addr *net.UDPAddr) error {
+	// TODO: Send BindChannelIndication message. When the peer receives it,
+	//       then add the sender to peer's session table with expiration of
+	//       60 seconds.
+	if _, err := overlay.conn.conn.WriteToUDP([]byte{}, addr); err != nil {
 		return err
 	}
-	overlay.peers[peer.ID] = peer
 	return nil
 }
 

@@ -64,7 +64,9 @@ func GetPeerFrom(m *stun.Message) (*Peer, error) {
 	return &p, err
 }
 
-type SessionTable map[string]Peer
+// SessionTable is a map whose keys are Peer IDs
+// and values are pairs of [external-addr, internal-addr]
+type SessionTable map[string][]*net.UDPAddr
 
 func (st SessionTable) AddTo(m *stun.Message) error {
 	var (
