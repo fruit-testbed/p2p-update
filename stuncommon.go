@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/gortc/stun"
 	"github.com/pkg/errors"
@@ -24,8 +23,6 @@ var (
 	stunDataError         = stun.NewType(stun.MethodData, stun.ClassErrorResponse)
 	stunBindingIndication = stun.NewType(stun.MethodBinding, stun.ClassIndication)
 
-	stunReplyTimeout = time.Second * 5
-
 	errNonSTUNMessage = errors.New("Not STUN Message")
 )
 
@@ -37,31 +34,6 @@ type Peer struct {
 
 func (p Peer) String() string {
 	return fmt.Sprintf("%s[%s][%s]", p.ID, p.InternalAddr.String(), p.ExternalAddr.String())
-}
-
-func (p Peer) AddTo(m *stun.Message) error {
-	var (
-		data []byte
-		err  error
-	)
-
-	if data, err = msgpack.Marshal(&p); err == nil {
-		m.Add(stun.AttrData, data)
-	}
-	return err
-}
-
-func GetPeerFrom(m *stun.Message) (*Peer, error) {
-	var (
-		p    Peer
-		data []byte
-		err  error
-	)
-
-	if data, err = m.Get(stun.AttrData); err == nil {
-		err = msgpack.Unmarshal(data, &p)
-	}
-	return &p, err
 }
 
 // SessionTable is a map whose keys are Peer IDs
@@ -174,23 +146,4 @@ func localID() (string, error) {
 		return hostname, nil
 	}
 	return "", errors.New("CPU serial, active ethernet, and hostname are not available")
-}
-
-func localIPs() []net.IP {
-	ips := make([]net.IP, 0, 5)
-	if ifaces, err := net.Interfaces(); err == nil {
-		for _, iface := range ifaces {
-			if addrs, err := iface.Addrs(); err == nil {
-				for _, addr := range addrs {
-					switch ip := addr.(type) {
-					case *net.IPNet:
-						ips = append(ips, ip.IP)
-					case *net.IPAddr:
-						ips = append(ips, ip.IP)
-					}
-				}
-			}
-		}
-	}
-	return ips
 }

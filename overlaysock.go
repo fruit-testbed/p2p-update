@@ -63,8 +63,6 @@ type OverlayConn struct {
 	localAddr      *net.UDPAddr
 	externalAddr   stun.XORMappedAddress
 
-	peers map[string]*Peer
-
 	automata *automata
 	conn     *overlayUDPConn
 	stun     *stun.Client
@@ -84,7 +82,6 @@ func NewOverlayConn(id string, rendezvousAddr, localAddr *net.UDPAddr) (*Overlay
 		Reopen:         true,
 		rendezvousAddr: rendezvousAddr,
 		localAddr:      localAddr,
-		peers:          make(map[string]*Peer),
 	}
 	overlay.createAutomata()
 	overlay.automata.event(eventOpen)
