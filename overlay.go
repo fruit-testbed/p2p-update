@@ -15,7 +15,7 @@ type overlayConn struct {
 	rendezvousAddr *net.UDPAddr
 }
 
-func NewOverlayConn(rendezvousAddr, localAddr *net.UDPAddr) (*overlayConn, error) {
+func newOverlayConn(rendezvousAddr, localAddr *net.UDPAddr) (*overlayConn, error) {
 	var (
 		conn *net.UDPConn
 		err  error
@@ -52,14 +52,9 @@ func (oc *overlayConn) Close() error {
 	return oc.conn.Close()
 }
 
-type DataHandler interface {
-	HandleData([]byte, *Peer) error
-}
-
 type Overlay struct {
-	ID          string
-	DataHandler DataHandler
-	Reopen      bool
+	ID     string
+	Reopen bool
 
 	rendezvousAddr *net.UDPAddr
 	localAddr      *net.UDPAddr
@@ -73,18 +68,23 @@ type Overlay struct {
 	errCount int
 
 	channelExpired time.Time
+
+	readDeadline  *time.Time
+	writeDeadline *time.Time
 }
 
-func NewOverlay(id string, rendezvousAddr, localAddr *net.UDPAddr, dataHandler DataHandler) (*Overlay, error) {
+// NewOverlay creates an overlay peer-to-peer connection that implements STUN
+// punching hole technique to directly communicate to peers behind NATs.
+func NewOverlay(id string, rendezvousAddr, localAddr *net.UDPAddr) (*Overlay, error) {
 	overlay := &Overlay{
 		ID:             id,
-		DataHandler:    dataHandler,
 		Reopen:         true,
 		rendezvousAddr: rendezvousAddr,
 		localAddr:      localAddr,
 		peers:          make(map[string]*Peer),
 	}
 	overlay.createAutomata()
+	overlay.automata.event(eventOpen)
 	return overlay, nil
 }
 
@@ -155,10 +155,6 @@ func (overlay *Overlay) createAutomata() {
 	)
 }
 
-func (overlay *Overlay) Open() error {
-	return overlay.automata.event(eventOpen)
-}
-
 func (overlay *Overlay) closed([]interface{}) {
 	log.Println("closing")
 
@@ -189,7 +185,7 @@ func (overlay *Overlay) closed([]interface{}) {
 func (overlay *Overlay) opening([]interface{}) {
 	var err error
 
-	if overlay.conn, err = NewOverlayConn(overlay.rendezvousAddr, overlay.localAddr); err != nil {
+	if overlay.conn, err = newOverlayConn(overlay.rendezvousAddr, overlay.localAddr); err != nil {
 		log.Printf("failed opening UDP connection (backing off for %v): %v",
 			backoffDuration, err)
 		time.Sleep(backoffDuration)
@@ -383,9 +379,7 @@ func (overlay *Overlay) processingMessage(data []interface{}) {
 		} else if req.Type == stun.BindingRequest {
 			// TODO: receive ping, reply with internal and external addresses
 			overlay.automata.event(eventError)
-		} else if req.Type == stunDataRequest &&
-			req.Contains(stun.AttrData) &&
-			overlay.DataHandler != nil {
+		} else if req.Type == stunDataRequest && req.Contains(stun.AttrData) {
 			if err = overlay.processDataRequest(&req, &res, &peer); err != nil {
 				log.Printf("ERROR: failed processing data request of %s: %v", peer.String(), err)
 				overlay.automata.event(eventError)
@@ -445,16 +439,11 @@ func (overlay *Overlay) processDataRequest(req, res *stun.Message, peer *Peer) e
 
 	if data, err = req.Get(stun.AttrData); err != nil {
 		return fmt.Errorf("invalid data request from %s", peer.String())
-	} else if err = overlay.DataHandler.HandleData(data, peer); err != nil {
-		log.Println("DataHandler returned an error:", err)
-		if err = overlay.buildDataErrorMessage(req, res, stun.CodeServerError); err != nil {
-			return err
-		}
-	} else {
-		log.Println("Successfully processing data")
-		if err = overlay.buildDataSuccessMessage(req, res); err != nil {
-			return err
-		}
+	}
+	// TODO: process the data
+	log.Println("Successfully processing data")
+	if err = overlay.buildDataSuccessMessage(req, res); err != nil {
+		return err
 	}
 	if _, err = overlay.conn.conn.WriteToUDP(res.Raw, &peer.ExternalAddr); err != nil {
 		return errors.Wrapf(err, "failed send response to %s", peer.String())
@@ -496,41 +485,50 @@ func (overlay *Overlay) messageError([]interface{}) {
 	}
 }
 
-func (overlay *Overlay) HandleData(data []byte, peer *Peer) error {
-	log.Printf("handle data from %s\n%s", peer.String(), string(data))
-	return nil
-}
-
-func (o *Overlay) Read(b []byte) (int, error) {
+// Read reads a gossip message sent by other
+func (overlay *Overlay) Read(b []byte) (int, error) {
 	// TODO: implement
 	return 0, nil
 }
 
-func (o *Overlay) Write(b []byte) (int, error) {
-	// TODO: implement
+// Write sends a gossip message to other nodes
+func (overlay *Overlay) Write(b []byte) (int, error) {
+	// TODO: handle multi-packets payload
 	return 0, nil
 }
 
-func (o *Overlay) Close() error {
-	return o.automata.event(eventClose)
+// Close closes the overlay.
+func (overlay *Overlay) Close() error {
+	return overlay.automata.event(eventClose)
 }
 
-func (o *Overlay) LocalAddr() net.Addr {
-	// TODO: implement
+// LocalAddr returns local (internal) address of this overlay.
+func (overlay *Overlay) LocalAddr() net.Addr {
+	return overlay.localAddr
+}
+
+// RemoteAddr returns remote (external) address of this overlay
+func (overlay *Overlay) RemoteAddr() net.Addr {
+	if addr, err := net.ResolveUDPAddr("udp", overlay.externalAddr.String()); err == nil {
+		return addr
+	}
 	return nil
 }
 
-func (o *Overlay) RemoteAddr() net.Addr {
-	// TODO: implement
+// SetDeadline sets read and write dealines
+func (overlay *Overlay) SetDeadline(t time.Time) error {
+	overlay.readDeadline, overlay.writeDeadline = &t, &t
 	return nil
 }
 
-func (o *Overlay) SetDeadline(t time.Time) error {
-	// TODO: implement
+// SetReadDeadline sets read deadline
+func (overlay *Overlay) SetReadDeadline(t time.Time) error {
+	overlay.readDeadline = &t
 	return nil
 }
 
-func (o *Overlay) SetWriteDeadline(t time.Time) error {
-	// TODO: implement
+// SetWriteDeadline sets write deadline
+func (overlay *Overlay) SetWriteDeadline(t time.Time) error {
+	overlay.writeDeadline = &t
 	return nil
 }
