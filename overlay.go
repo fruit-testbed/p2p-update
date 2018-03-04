@@ -10,12 +10,12 @@ import (
 	"github.com/pkg/errors"
 )
 
-type overlayConn struct {
+type overlayUDPConn struct {
 	conn           *net.UDPConn
 	rendezvousAddr *net.UDPAddr
 }
 
-func newOverlayConn(rendezvousAddr, localAddr *net.UDPAddr) (*overlayConn, error) {
+func newOverlayUDPConn(rendezvousAddr, localAddr *net.UDPAddr) (*overlayUDPConn, error) {
 	var (
 		conn *net.UDPConn
 		err  error
@@ -25,27 +25,27 @@ func newOverlayConn(rendezvousAddr, localAddr *net.UDPAddr) (*overlayConn, error
 		return nil, errors.Wrap(err, "failed creating UDP connection")
 	}
 	log.Println("connection is opened at", conn.LocalAddr().String())
-	return &overlayConn{
+	return &overlayUDPConn{
 		conn:           conn,
 		rendezvousAddr: rendezvousAddr,
 	}, nil
 }
 
-func (oc *overlayConn) Read(p []byte) (n int, err error) {
+func (oc *overlayUDPConn) Read(p []byte) (n int, err error) {
 	if oc.conn == nil {
 		return -1, fmt.Errorf("connection is not opened")
 	}
 	return oc.conn.Read(p)
 }
 
-func (oc *overlayConn) Write(p []byte) (n int, err error) {
+func (oc *overlayUDPConn) Write(p []byte) (n int, err error) {
 	if oc.conn == nil {
 		return -1, fmt.Errorf("connection is not opened")
 	}
 	return oc.conn.WriteToUDP(p, oc.rendezvousAddr)
 }
 
-func (oc *overlayConn) Close() error {
+func (oc *overlayUDPConn) Close() error {
 	if oc.conn == nil {
 		return nil
 	}
@@ -63,7 +63,7 @@ type Overlay struct {
 	peers map[string]*Peer
 
 	automata *automata
-	conn     *overlayConn
+	conn     *overlayUDPConn
 	stun     *stun.Client
 	errCount int
 
@@ -185,7 +185,7 @@ func (overlay *Overlay) closed([]interface{}) {
 func (overlay *Overlay) opening([]interface{}) {
 	var err error
 
-	if overlay.conn, err = newOverlayConn(overlay.rendezvousAddr, overlay.localAddr); err != nil {
+	if overlay.conn, err = newOverlayUDPConn(overlay.rendezvousAddr, overlay.localAddr); err != nil {
 		log.Printf("failed opening UDP connection (backing off for %v): %v",
 			backoffDuration, err)
 		time.Sleep(backoffDuration)
