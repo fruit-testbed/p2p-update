@@ -53,7 +53,7 @@ func main() {
 		var (
 			id           string
 			raddr, laddr *net.UDPAddr
-			overlay      *Overlay
+			overlay      *OverlayConn
 			err          error
 		)
 		if id, err = localID(); err != nil {
@@ -65,12 +65,8 @@ func main() {
 		if laddr, err = net.ResolveUDPAddr("udp", *localAddr); err != nil {
 			log.Fatalln("Cannot resolve local address (laddr):", err)
 		}
-		if overlay, err = NewOverlay(id, raddr, laddr, nil); err != nil {
+		if overlay, err = NewOverlayConn(id, raddr, laddr); err != nil {
 			log.Fatalln("Cannot crete overlay:", err)
-		}
-		overlay.DataHandler = overlay
-		if err = overlay.Open(); err != nil {
-			log.Fatalln("Cannot open overlay:", err)
 		}
 		time.Sleep(10 * time.Minute)
 		log.Println("overlay's state:", overlay.automata.current)
