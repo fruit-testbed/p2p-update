@@ -52,7 +52,10 @@ func (oc *overlayUDPConn) Close() error {
 	return oc.conn.Close()
 }
 
-type Overlay struct {
+// OverlayConn is an implementation of net.Conn interface for a overlay network
+// that uses STUN punching hole technique to enable peer-to-peer communications
+// for nodes behind NATs.
+type OverlayConn struct {
 	ID     string
 	Reopen bool
 
@@ -73,10 +76,10 @@ type Overlay struct {
 	writeDeadline *time.Time
 }
 
-// NewOverlay creates an overlay peer-to-peer connection that implements STUN
+// NewOverlayConn creates an overlay peer-to-peer connection that implements STUN
 // punching hole technique to directly communicate to peers behind NATs.
-func NewOverlay(id string, rendezvousAddr, localAddr *net.UDPAddr) (*Overlay, error) {
-	overlay := &Overlay{
+func NewOverlayConn(id string, rendezvousAddr, localAddr *net.UDPAddr) (*OverlayConn, error) {
+	overlay := &OverlayConn{
 		ID:             id,
 		Reopen:         true,
 		rendezvousAddr: rendezvousAddr,
@@ -120,7 +123,7 @@ const (
 	eventChannelExpired
 )
 
-func (overlay *Overlay) createAutomata() {
+func (overlay *OverlayConn) createAutomata() {
 	overlay.automata = NewAutomata(
 		stateClosed,
 		[]transition{
@@ -155,7 +158,7 @@ func (overlay *Overlay) createAutomata() {
 	)
 }
 
-func (overlay *Overlay) closed([]interface{}) {
+func (overlay *OverlayConn) closed([]interface{}) {
 	log.Println("closing")
 
 	conn, stun := overlay.conn, overlay.stun
@@ -182,7 +185,7 @@ func (overlay *Overlay) closed([]interface{}) {
 	}
 }
 
-func (overlay *Overlay) opening([]interface{}) {
+func (overlay *OverlayConn) opening([]interface{}) {
 	var err error
 
 	if overlay.conn, err = newOverlayUDPConn(overlay.rendezvousAddr, overlay.localAddr); err != nil {
@@ -206,11 +209,11 @@ func (overlay *Overlay) opening([]interface{}) {
 	}
 }
 
-func (overlay *Overlay) opened([]interface{}) {
+func (overlay *OverlayConn) opened([]interface{}) {
 	overlay.automata.event(eventBind)
 }
 
-func (overlay *Overlay) binding([]interface{}) {
+func (overlay *OverlayConn) binding([]interface{}) {
 	var (
 		msg *stun.Message
 		err error
@@ -255,7 +258,7 @@ func (overlay *Overlay) binding([]interface{}) {
 	}
 }
 
-func (overlay *Overlay) bindingRequestMessage() (*stun.Message, error) {
+func (overlay *OverlayConn) bindingRequestMessage() (*stun.Message, error) {
 	var (
 		laddr   = overlay.conn.conn.LocalAddr()
 		addr    *net.UDPAddr
@@ -280,7 +283,7 @@ func (overlay *Overlay) bindingRequestMessage() (*stun.Message, error) {
 	)
 }
 
-func (overlay *Overlay) bindError([]interface{}) {
+func (overlay *OverlayConn) bindError([]interface{}) {
 	overlay.errCount++
 	if overlay.errCount >= bindErrorsLimit {
 		overlay.errCount = 0
@@ -291,7 +294,7 @@ func (overlay *Overlay) bindError([]interface{}) {
 	}
 }
 
-func (overlay *Overlay) listening([]interface{}) {
+func (overlay *OverlayConn) listening([]interface{}) {
 	var (
 		deadline = time.Now().Add(listenWaitTime)
 		buf      = make([]byte, readBufferSize)
@@ -328,7 +331,7 @@ func (overlay *Overlay) listening([]interface{}) {
 	}
 }
 
-func (overlay *Overlay) processingMessage(data []interface{}) {
+func (overlay *OverlayConn) processingMessage(data []interface{}) {
 	if len(data) < 2 {
 		log.Fatalln("ERROR: processingMessage should receive two arguments from listening")
 	}
@@ -393,7 +396,7 @@ func (overlay *Overlay) processingMessage(data []interface{}) {
 	}
 }
 
-func (overlay *Overlay) processSessionTable(req, res *stun.Message) error {
+func (overlay *OverlayConn) processSessionTable(req, res *stun.Message) error {
 	var (
 		st   *SessionTable
 		addr *net.UDPAddr
@@ -421,7 +424,7 @@ func (overlay *Overlay) processSessionTable(req, res *stun.Message) error {
 	return nil
 }
 
-func (overlay *Overlay) bindChannelPeer(addr *net.UDPAddr) error {
+func (overlay *OverlayConn) bindChannelPeer(addr *net.UDPAddr) error {
 	// TODO: Send BindChannelIndication message. When the peer receives it,
 	//       then add the sender to peer's session table with expiration of
 	//       60 seconds.
@@ -431,7 +434,7 @@ func (overlay *Overlay) bindChannelPeer(addr *net.UDPAddr) error {
 	return nil
 }
 
-func (overlay *Overlay) processDataRequest(req, res *stun.Message, peer *Peer) error {
+func (overlay *OverlayConn) processDataRequest(req, res *stun.Message, peer *Peer) error {
 	var (
 		data []byte
 		err  error
@@ -452,7 +455,7 @@ func (overlay *Overlay) processDataRequest(req, res *stun.Message, peer *Peer) e
 	return nil
 }
 
-func (overlay *Overlay) buildDataErrorMessage(req, res *stun.Message, ec stun.ErrorCode) error {
+func (overlay *OverlayConn) buildDataErrorMessage(req, res *stun.Message, ec stun.ErrorCode) error {
 	return res.Build(
 		stun.NewTransactionIDSetter(req.TransactionID),
 		stunDataError,
@@ -464,7 +467,7 @@ func (overlay *Overlay) buildDataErrorMessage(req, res *stun.Message, ec stun.Er
 	)
 }
 
-func (overlay *Overlay) buildDataSuccessMessage(req, res *stun.Message) error {
+func (overlay *OverlayConn) buildDataSuccessMessage(req, res *stun.Message) error {
 	return res.Build(
 		stun.NewTransactionIDSetter(req.TransactionID),
 		stunDataSuccess,
@@ -475,7 +478,7 @@ func (overlay *Overlay) buildDataSuccessMessage(req, res *stun.Message) error {
 	)
 }
 
-func (overlay *Overlay) messageError([]interface{}) {
+func (overlay *OverlayConn) messageError([]interface{}) {
 	overlay.errCount++
 	if overlay.errCount >= listenErrorsLimit {
 		overlay.errCount = 0
@@ -486,29 +489,29 @@ func (overlay *Overlay) messageError([]interface{}) {
 }
 
 // Read reads a gossip message sent by other
-func (overlay *Overlay) Read(b []byte) (int, error) {
+func (overlay *OverlayConn) Read(b []byte) (int, error) {
 	// TODO: implement
 	return 0, nil
 }
 
 // Write sends a gossip message to other nodes
-func (overlay *Overlay) Write(b []byte) (int, error) {
+func (overlay *OverlayConn) Write(b []byte) (int, error) {
 	// TODO: handle multi-packets payload
 	return 0, nil
 }
 
 // Close closes the overlay.
-func (overlay *Overlay) Close() error {
+func (overlay *OverlayConn) Close() error {
 	return overlay.automata.event(eventClose)
 }
 
 // LocalAddr returns local (internal) address of this overlay.
-func (overlay *Overlay) LocalAddr() net.Addr {
+func (overlay *OverlayConn) LocalAddr() net.Addr {
 	return overlay.localAddr
 }
 
 // RemoteAddr returns remote (external) address of this overlay
-func (overlay *Overlay) RemoteAddr() net.Addr {
+func (overlay *OverlayConn) RemoteAddr() net.Addr {
 	if addr, err := net.ResolveUDPAddr("udp", overlay.externalAddr.String()); err == nil {
 		return addr
 	}
@@ -516,19 +519,19 @@ func (overlay *Overlay) RemoteAddr() net.Addr {
 }
 
 // SetDeadline sets read and write dealines
-func (overlay *Overlay) SetDeadline(t time.Time) error {
+func (overlay *OverlayConn) SetDeadline(t time.Time) error {
 	overlay.readDeadline, overlay.writeDeadline = &t, &t
 	return nil
 }
 
 // SetReadDeadline sets read deadline
-func (overlay *Overlay) SetReadDeadline(t time.Time) error {
+func (overlay *OverlayConn) SetReadDeadline(t time.Time) error {
 	overlay.readDeadline = &t
 	return nil
 }
 
 // SetWriteDeadline sets write deadline
-func (overlay *Overlay) SetWriteDeadline(t time.Time) error {
+func (overlay *OverlayConn) SetWriteDeadline(t time.Time) error {
 	overlay.writeDeadline = &t
 	return nil
 }
