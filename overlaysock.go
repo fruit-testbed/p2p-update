@@ -436,11 +436,10 @@ func (overlay *OverlayConn) bindChannelPeer(addr *net.UDPAddr) error {
 
 func (overlay *OverlayConn) processDataRequest(req, res *stun.Message, peer *Peer) error {
 	var (
-		data []byte
-		err  error
+		err error
 	)
 
-	if data, err = req.Get(stun.AttrData); err != nil {
+	if _, err = req.Get(stun.AttrData); err != nil {
 		return fmt.Errorf("invalid data request from %s", peer.String())
 	}
 	// TODO: process the data
