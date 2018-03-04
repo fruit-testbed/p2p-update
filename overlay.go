@@ -89,13 +89,13 @@ func NewOverlay(id string, rendezvousAddr, localAddr *net.UDPAddr, dataHandler D
 }
 
 const (
-	bindErrorsLimit     = 10
-	bindingDeadline     = 30 * time.Second
-	dataErrorsLimit     = 10
-	readingDataDeadline = 30 * time.Second
-	backoffDuration     = 10 * time.Second
-	bufferSize          = 64 * 1024 // buffer size to read UDP packet
-	channelDuration     = 60 * time.Second
+	bindWaitTime      = 30 * time.Second
+	bindErrorsLimit   = 10
+	listenWaitTime    = 30 * time.Second
+	listenErrorsLimit = 10
+	readBufferSize    = 64 * 1024 // buffer size to read UDP packet
+	backoffDuration   = 10 * time.Second
+	channelDuration   = 60 * time.Second
 )
 
 const (
@@ -220,7 +220,7 @@ func (overlay *Overlay) binding([]interface{}) {
 		err error
 	)
 
-	deadline := time.Now().Add(bindingDeadline)
+	deadline := time.Now().Add(bindWaitTime)
 
 	handler := stun.HandlerFunc(func(e stun.Event) {
 		if e.Error != nil {
@@ -297,8 +297,8 @@ func (overlay *Overlay) bindError([]interface{}) {
 
 func (overlay *Overlay) listening([]interface{}) {
 	var (
-		deadline = time.Now().Add(readingDataDeadline)
-		buf      = make([]byte, bufferSize)
+		deadline = time.Now().Add(listenWaitTime)
+		buf      = make([]byte, readBufferSize)
 
 		n    int
 		addr net.Addr
@@ -488,7 +488,7 @@ func (overlay *Overlay) buildDataSuccessMessage(req, res *stun.Message) error {
 
 func (overlay *Overlay) messageError([]interface{}) {
 	overlay.errCount++
-	if overlay.errCount >= dataErrorsLimit {
+	if overlay.errCount >= listenErrorsLimit {
 		overlay.errCount = 0
 		overlay.automata.event(eventOverLimit)
 	} else {
