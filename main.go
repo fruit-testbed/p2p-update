@@ -39,7 +39,6 @@ func main() {
 		msg := stun.MustBuild(
 			stun.TransactionID,
 			stunDataRequest,
-			stunSoftware,
 			stun.NewUsername("sender"),
 		)
 		msg.Add(stun.AttrData, []byte(*sendData))

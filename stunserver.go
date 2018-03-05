@@ -161,7 +161,6 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) (*PeerI
 	return pid, res.Build(
 		stun.NewTransactionIDSetter(req.TransactionID),
 		stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
-		stunSoftware,
 		&stun.XORMappedAddress{
 			IP:   s.peers[*pid][0].IP,
 			Port: s.peers[*pid][0].Port,
@@ -177,7 +176,6 @@ func (s *StunServer) advertiseNewPeer(pid *PeerID, addrs []*net.UDPAddr, c net.P
 	msg, err := stun.Build(
 		stun.TransactionID,
 		stunBindingIndication,
-		stunSoftware,
 		&s.ID,
 		SessionTable{*pid: addrs},
 		stun.NewShortTermIntegrity(stunPassword),
@@ -209,7 +207,6 @@ func (s *StunServer) advertiseSessionTable(c net.PacketConn) error {
 	msg, err := stun.Build(
 		stun.TransactionID,
 		stunBindingIndication,
-		stunSoftware,
 		&s.ID,
 		peers,
 		stun.NewShortTermIntegrity(stunPassword),

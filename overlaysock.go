@@ -282,7 +282,6 @@ func (overlay *OverlayConn) bindingRequestMessage() (*stun.Message, error) {
 		stun.TransactionID,
 		stun.BindingRequest,
 		xorAddr,
-		stunSoftware,
 		&overlay.ID,
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
@@ -302,38 +301,26 @@ func (overlay *OverlayConn) bindError([]interface{}) {
 
 func (overlay *OverlayConn) listening([]interface{}) {
 	var (
-		deadline = time.Now().Add(listenWaitTime)
-		buf      = make([]byte, readBufferSize)
+		buf = make([]byte, readBufferSize)
 
 		n    int
-		addr net.Addr
+		addr *net.UDPAddr
 		err  error
 	)
 
-	if deadline.After(overlay.channelExpired) {
-		deadline = overlay.channelExpired
-	}
-	log.Println("channel will expire within", overlay.channelExpired.Sub(time.Now()))
-
-	if deadline.Before(time.Now()) {
-		log.Println("channel has expired")
-		overlay.automata.event(eventChannelExpired)
-	} else if err = overlay.conn.conn.SetDeadline(deadline); err != nil {
+	if err = overlay.conn.conn.SetDeadline(overlay.channelExpired); err != nil {
 		log.Printf("failed to set read deadline: %v", err)
 		overlay.automata.event(eventError)
-	} else if n, addr, err = overlay.conn.conn.ReadFrom(buf); err != nil {
+	} else if n, addr, err = overlay.conn.conn.ReadFromUDP(buf); err != nil {
 		log.Printf("failed to read the message: %v", err)
-		overlay.automata.event(eventError)
-	} else {
-		overlay.channelExpired = time.Now().Add(channelDuration)
-		switch peer := addr.(type) {
-		case *net.UDPAddr:
-			log.Printf("<- received a message from %s", peer.String())
-			overlay.automata.event(eventSuccess, peer, buf[:n])
-		default:
-			log.Printf("unknown addr: %v", addr)
+		if time.Now().After(overlay.channelExpired) {
+			overlay.automata.event(eventChannelExpired)
+		} else {
 			overlay.automata.event(eventError)
 		}
+	} else {
+		overlay.channelExpired = time.Now().Add(channelDuration)
+		overlay.automata.event(eventSuccess, addr, buf[:n])
 	}
 }
 
@@ -472,7 +459,6 @@ func (overlay *OverlayConn) buildDataErrorMessage(req, res *stun.Message, ec stu
 		stun.NewTransactionIDSetter(req.TransactionID),
 		stunDataError,
 		ec,
-		stunSoftware,
 		&overlay.ID,
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
@@ -483,7 +469,6 @@ func (overlay *OverlayConn) buildDataSuccessMessage(req, res *stun.Message) erro
 	return res.Build(
 		stun.NewTransactionIDSetter(req.TransactionID),
 		stunDataSuccess,
-		stunSoftware,
 		&overlay.ID,
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,

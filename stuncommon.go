@@ -16,7 +16,6 @@ import (
 
 var (
 	stunRealm    = "fruit-testbed.org"
-	stunSoftware = stun.NewSoftware("fruit/p2psecureupdate")
 	stunPassword = "123"
 
 	stunDataRequest       = stun.NewType(stun.MethodData, stun.ClassRequest)
@@ -96,19 +95,12 @@ func GetSessionTableFrom(m *stun.Message) (*SessionTable, error) {
 
 func validateMessage(m *stun.Message, t *stun.MessageType) error {
 	var (
-		soft stun.Software
-		err  error
+		err error
 	)
 
 	if t != nil && (m.Type.Method != t.Method || m.Type.Class != t.Class) {
 		return fmt.Errorf("incorrect message type, expected %v but got %v",
 			*t, m.Type)
-	}
-
-	if err = soft.GetFrom(m); err != nil {
-		return err
-	} else if soft.String() != stunSoftware.String() {
-		return fmt.Errorf("Invalid software: %s", soft.String())
 	}
 
 	var username stun.Username
