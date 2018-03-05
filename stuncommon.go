@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -26,19 +27,47 @@ var (
 	errNonSTUNMessage = errors.New("Not STUN Message")
 )
 
+type PeerID [6]byte
+
+func (pid PeerID) String() string {
+	return hex.EncodeToString(pid[:])
+}
+
+func (pid *PeerID) AddTo(m *stun.Message) error {
+	m.Add(stun.AttrUsername, pid[:])
+	return nil
+}
+
+func (pid *PeerID) GetFrom(m *stun.Message) error {
+	var (
+		buf []byte
+		err error
+	)
+
+	if buf, err = m.Get(stun.AttrUsername); err != nil {
+		return errors.Wrap(err, "cannot get username from the message")
+	} else if len(buf) != len(pid) {
+		return fmt.Errorf("length of username (%d bytes) is not 6 bytes", len(buf))
+	}
+	for i, b := range buf {
+		pid[i] = b
+	}
+	return nil
+}
+
 type Peer struct {
-	ID           string
+	ID           PeerID
 	InternalAddr net.UDPAddr
 	ExternalAddr net.UDPAddr
 }
 
 func (p Peer) String() string {
-	return fmt.Sprintf("%s[%s][%s]", p.ID, p.InternalAddr.String(), p.ExternalAddr.String())
+	return fmt.Sprintf("%s[%s][%s]", p.ID.String(), p.InternalAddr.String(), p.ExternalAddr.String())
 }
 
 // SessionTable is a map whose keys are Peer IDs
 // and values are pairs of [external-addr, internal-addr]
-type SessionTable map[string][]*net.UDPAddr
+type SessionTable map[PeerID][]*net.UDPAddr
 
 func (st SessionTable) AddTo(m *stun.Message) error {
 	var (
@@ -99,51 +128,59 @@ func validateMessage(m *stun.Message, t *stun.MessageType) error {
 	return nil
 }
 
-func piSerial() (string, error) {
+func piSerial() (*PeerID, error) {
 	file, err := os.Open("/proc/cpuinfo")
 	if err != nil {
-		return "", errors.New("Cannot open /proc/cpuinfo")
+		return nil, errors.Wrap(err, "cannot open /proc/cpuinfo")
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if len(line) > 10 && line[0:7] == "Serial\t" {
-			return strings.TrimLeft(strings.Split(line, " ")[1], "0"), nil
+			s := []byte(strings.TrimLeft(strings.Split(line, " ")[1], "0"))
+			var serial PeerID
+			_, err = hex.Decode(serial[:], s)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed converting %s to []byte", s)
+			}
+			return &serial, nil
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		errors.Wrap(err, "Failed to read serial number")
+		return nil, errors.Wrap(err, "failed to read serial number")
 	}
-	return "", errors.New("Cannot find serial number from /proc/cpuinfo")
+	return nil, errors.New("cannot find serial number from /proc/cpuinfo")
 }
 
-func getActiveMacAddress() (string, error) {
+func getActiveMacAddress() ([]byte, error) {
 	var (
 		ifaces []net.Interface
 		err    error
 	)
 	if ifaces, err = net.Interfaces(); err != nil {
-		return "", err
+		return nil, err
 	}
 	for _, i := range ifaces {
 		if i.Flags&net.FlagUp != 0 && bytes.Compare(i.HardwareAddr, nil) != 0 {
 			// Don't use random as we have a real address
-			return i.HardwareAddr.String(), nil
+			return i.HardwareAddr, nil
 		}
 	}
-	return "", errors.New("No active ethernet available")
+	return nil, errors.New("No active ethernet available")
 }
 
-func localID() (string, error) {
+func localID() (*PeerID, error) {
 	if serial, err := piSerial(); err == nil {
 		return serial, nil
 	}
-	if mac, err := getActiveMacAddress(); err == nil {
-		return strings.Replace(mac, ":", "", -1), nil
+
+	var pid PeerID
+	if mac, err := getActiveMacAddress(); err == nil && len(mac) >= 6 {
+		for i, b := range mac {
+			pid[i] = b
+		}
+		return &pid, nil
 	}
-	if hostname, err := os.Hostname(); err == nil {
-		return hostname, nil
-	}
-	return "", errors.New("CPU serial, active ethernet, and hostname are not available")
+	return nil, errors.New("CPU serial and active ethernet are not available")
 }

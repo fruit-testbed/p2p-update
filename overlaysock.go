@@ -56,7 +56,7 @@ func (oc *overlayUDPConn) Close() error {
 // that uses STUN punching hole technique to enable peer-to-peer communications
 // for nodes behind NATs.
 type OverlayConn struct {
-	ID     string
+	ID     PeerID
 	Reopen bool
 
 	rendezvousAddr *net.UDPAddr
@@ -76,9 +76,18 @@ type OverlayConn struct {
 
 // NewOverlayConn creates an overlay peer-to-peer connection that implements STUN
 // punching hole technique to directly communicate to peers behind NATs.
-func NewOverlayConn(id string, rendezvousAddr, localAddr *net.UDPAddr) (*OverlayConn, error) {
+func NewOverlayConn(rendezvousAddr, localAddr *net.UDPAddr) (*OverlayConn, error) {
+	var (
+		pid *PeerID
+		err error
+	)
+
+	if pid, err = localID(); err != nil {
+		return nil, errors.Wrap(err, "failed to get local ID")
+	}
+	log.Printf("local peer ID: %s", pid.String())
 	overlay := &OverlayConn{
-		ID:             id,
+		ID:             *pid,
 		Reopen:         true,
 		rendezvousAddr: rendezvousAddr,
 		localAddr:      localAddr,
@@ -274,7 +283,7 @@ func (overlay *OverlayConn) bindingRequestMessage() (*stun.Message, error) {
 		stun.BindingRequest,
 		xorAddr,
 		stunSoftware,
-		stun.NewUsername(overlay.ID),
+		&overlay.ID,
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
 	)
@@ -334,7 +343,7 @@ func (overlay *OverlayConn) processingMessage(data []interface{}) {
 	}
 
 	var (
-		username stun.Username
+		pid      PeerID
 		peer     Peer
 		msg      []byte
 		req, res stun.Message
@@ -356,19 +365,19 @@ func (overlay *OverlayConn) processingMessage(data []interface{}) {
 	}
 
 	if !stun.IsMessage(msg) {
-		log.Printf("!!! %s sent a message that is not a STUN message", peer.String())
+		log.Printf("!!! %s sent a message that is not a STUN message", peer.ExternalAddr.String())
 		overlay.automata.event(eventError)
 	} else if _, err = req.Write(msg); err != nil {
-		log.Printf("failed to read message from %s: %v", peer.String(), err)
+		log.Printf("failed to read message from %s: %v", peer.ExternalAddr.String(), err)
 		overlay.automata.event(eventError)
 	} else if err = validateMessage(&req, nil); err != nil {
-		log.Printf("%s sent invalid STUN message: %v", peer.String(), err)
+		log.Printf("%s sent invalid STUN message: %v", peer.ExternalAddr.String(), err)
 		overlay.automata.event(eventError)
-	} else if err = username.GetFrom(&req); err != nil {
-		log.Printf("failed to get peerID of %s: %v", peer.String(), err)
+	} else if err = pid.GetFrom(&req); err != nil {
+		log.Printf("failed to get peerID of %s: %v", peer.ExternalAddr.String(), err)
 		overlay.automata.event(eventError)
 	} else {
-		peer.ID = username.String()
+		peer.ID = pid
 		if req.Type == stunBindingIndication {
 			if err = overlay.processSessionTable(&req, &res); err != nil {
 				log.Println("failed prcessing session table:", err)
@@ -378,6 +387,7 @@ func (overlay *OverlayConn) processingMessage(data []interface{}) {
 			}
 		} else if req.Type == stun.BindingRequest {
 			// TODO: receive ping, reply with internal and external addresses
+			log.Printf("!!! failed prcessing binding request from %s", peer.String())
 			overlay.automata.event(eventError)
 		} else if req.Type == stunDataRequest && req.Contains(stun.AttrData) {
 			if err = overlay.processDataRequest(&req, &res, &peer); err != nil {
@@ -397,11 +407,15 @@ func (overlay *OverlayConn) processSessionTable(req, res *stun.Message) error {
 	var (
 		st   *SessionTable
 		addr *net.UDPAddr
+		msg  *stun.Message
 		err  error
 	)
 
 	if st, err = GetSessionTableFrom(req); err != nil {
 		return err
+	}
+	if msg, err = overlay.bindingRequestMessage(); err != nil {
+		return errors.Wrap(err, "failed creating binding request message")
 	}
 	for id, addrs := range *st {
 		if id == overlay.ID {
@@ -410,7 +424,7 @@ func (overlay *OverlayConn) processSessionTable(req, res *stun.Message) error {
 		if addr = addrs[0]; addr.IP.Equal(overlay.externalAddr.IP) {
 			addr = addrs[1]
 		}
-		if err = overlay.bindChannelPeer(addr); err != nil {
+		if err = overlay.bindingPeer(addr, msg); err != nil {
 			log.Printf("WARNING: failed binding channel to %s[%s][%s] - %v",
 				id, addrs[0].String(), addrs[1].String(), err)
 		} else {
@@ -421,11 +435,11 @@ func (overlay *OverlayConn) processSessionTable(req, res *stun.Message) error {
 	return nil
 }
 
-func (overlay *OverlayConn) bindChannelPeer(addr *net.UDPAddr) error {
-	// TODO: Send BindChannelIndication message. When the peer receives it,
-	//       then add the sender to peer's session table with expiration of
-	//       60 seconds.
-	if _, err := overlay.conn.conn.WriteToUDP([]byte{}, addr); err != nil {
+func (overlay *OverlayConn) bindingPeer(addr *net.UDPAddr, msg *stun.Message) error {
+	// TODO: Send BindingRequest message. When the peer receives, then it
+	//       replies with success message and add the sender to peer's
+	// session table with expiration of 60 seconds.
+	if _, err := overlay.conn.conn.WriteToUDP(msg.Raw, addr); err != nil {
 		return err
 	}
 	return nil
@@ -459,7 +473,7 @@ func (overlay *OverlayConn) buildDataErrorMessage(req, res *stun.Message, ec stu
 		stunDataError,
 		ec,
 		stunSoftware,
-		stun.NewUsername(overlay.ID),
+		&overlay.ID,
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
 	)
@@ -470,7 +484,7 @@ func (overlay *OverlayConn) buildDataSuccessMessage(req, res *stun.Message) erro
 		stun.NewTransactionIDSetter(req.TransactionID),
 		stunDataSuccess,
 		stunSoftware,
-		stun.NewUsername(overlay.ID),
+		&overlay.ID,
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,
 	)
