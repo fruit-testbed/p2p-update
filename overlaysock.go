@@ -69,6 +69,11 @@ type OverlayConn struct {
 	errCount int
 
 	channelExpired time.Time
+	msg            []byte
+	addr           *net.UDPAddr
+
+	chanChannelBind chan *incomingMessage
+	chanSendData    chan *incomingMessage
 
 	readDeadline  *time.Time
 	writeDeadline *time.Time
@@ -91,6 +96,9 @@ func NewOverlayConn(rendezvousAddr, localAddr *net.UDPAddr) (*OverlayConn, error
 		Reopen:         true,
 		rendezvousAddr: rendezvousAddr,
 		localAddr:      localAddr,
+
+		chanChannelBind: make(chan *incomingMessage, 10),
+		chanSendData:    make(chan *incomingMessage, 10),
 	}
 	overlay.createAutomata()
 	overlay.automata.event(eventOpen)
@@ -240,7 +248,7 @@ func (overlay *OverlayConn) binding([]interface{}) {
 		} else if err = overlay.externalAddr.GetFrom(e.Message); err != nil {
 			log.Println("failed getting mapped address:", err)
 			overlay.automata.event(eventError)
-		} else if err = overlay.processSessionTable(e.Message, new(stun.Message)); err != nil {
+		} else if err = overlay.processSessionTable(e.Message); err != nil {
 			log.Println("failed processing session table:", err)
 			overlay.automata.event(eventError)
 		} else {
@@ -320,77 +328,78 @@ func (overlay *OverlayConn) listening([]interface{}) {
 		}
 	} else {
 		overlay.channelExpired = time.Now().Add(channelDuration)
-		overlay.automata.event(eventSuccess, addr, buf[:n])
+		overlay.msg, overlay.addr = buf[:n], addr
+		overlay.automata.event(eventSuccess)
 	}
 }
 
-func (overlay *OverlayConn) processingMessage(data []interface{}) {
-	if len(data) < 2 {
-		log.Fatalln("ERROR: processingMessage should receive two arguments from listening")
+func (overlay *OverlayConn) parseHeader(req *stun.Message) (*PeerID, error) {
+	if !stun.IsMessage(overlay.msg) {
+		return nil, fmt.Errorf("!!! %s sent a message that is not a STUN message", overlay.addr)
+	} else if _, err := req.Write(overlay.msg); err != nil {
+		return nil, fmt.Errorf("failed to read message from %s: %v", overlay.addr, err)
+	} else if err := validateMessage(req, nil); err != nil {
+		return nil, fmt.Errorf("%s sent invalid STUN message: %v", overlay.addr, err)
 	}
 
+	pid := new(PeerID)
+	if err := pid.GetFrom(req); err != nil {
+		return nil, fmt.Errorf("failed to get peerID of %s: %v", overlay.addr, err)
+	}
+	return pid, nil
+}
+
+type incomingMessage struct {
+	pid  *PeerID
+	addr *net.UDPAddr
+	req  *stun.Message
+}
+
+func (overlay *OverlayConn) processingMessage([]interface{}) {
 	var (
-		pid      PeerID
-		peer     Peer
-		msg      []byte
-		req, res stun.Message
-		err      error
+		pid *PeerID
+		req stun.Message
+		err error
 	)
 
-	switch addr := data[0].(type) {
-	case *net.UDPAddr:
-		peer.ExternalAddr = *addr
-	default:
-		log.Fatalln("ERROR: first argument is not *Peer")
+	if pid, err = overlay.parseHeader(&req); err != nil {
+		log.Println(err)
+		overlay.automata.event(eventError)
+		return
 	}
 
-	switch m := data[1].(type) {
-	case []byte:
-		msg = m
-	default:
-		log.Fatalln("ERROR: second argument is not []byte")
+	inMsg := incomingMessage{
+		pid:  pid,
+		addr: overlay.addr,
+		req:  &req,
 	}
-
-	if !stun.IsMessage(msg) {
-		log.Printf("!!! %s sent a message that is not a STUN message", peer.ExternalAddr.String())
-		overlay.automata.event(eventError)
-	} else if _, err = req.Write(msg); err != nil {
-		log.Printf("failed to read message from %s: %v", peer.ExternalAddr.String(), err)
-		overlay.automata.event(eventError)
-	} else if err = validateMessage(&req, nil); err != nil {
-		log.Printf("%s sent invalid STUN message: %v", peer.ExternalAddr.String(), err)
-		overlay.automata.event(eventError)
-	} else if err = pid.GetFrom(&req); err != nil {
-		log.Printf("failed to get peerID of %s: %v", peer.ExternalAddr.String(), err)
-		overlay.automata.event(eventError)
+	err = nil
+	if req.Type == stunChannelBindIndication {
+		err = overlay.processSessionTable(&req)
 	} else {
-		peer.ID = pid
-		if req.Type == stunBindingIndication {
-			if err = overlay.processSessionTable(&req, &res); err != nil {
-				log.Println("failed prcessing session table:", err)
-				overlay.automata.event(eventError)
-			} else {
-				overlay.automata.event(eventSuccess)
-			}
-		} else if req.Type == stun.BindingRequest {
-			// TODO: receive ping, reply with internal and external addresses
-			log.Printf("!!! failed prcessing binding request from %s", peer.String())
-			overlay.automata.event(eventError)
-		} else if req.Type == stunDataRequest && req.Contains(stun.AttrData) {
-			if err = overlay.processDataRequest(&req, &res, &peer); err != nil {
-				log.Printf("ERROR: failed processing data request of %s: %v", peer.String(), err)
-				overlay.automata.event(eventError)
-			} else {
-				overlay.automata.event(eventSuccess)
-			}
-		} else {
-			log.Printf("!!! ignored STUN message from %s", peer.String())
-			overlay.automata.event(eventError)
+		switch req.Type.Method {
+		case stun.MethodChannelBind:
+			overlay.chanChannelBind <- &inMsg
+		case stun.MethodSend, stun.MethodData:
+			overlay.chanSendData <- &inMsg
+		default:
+			err = fmt.Errorf("!! %s[%s] sent a bad message - type:%v", pid, overlay.addr, req.Type)
 		}
+	}
+	if err == nil {
+		overlay.automata.event(eventSuccess)
+	} else {
+		log.Println(err)
+		overlay.automata.event(eventError)
 	}
 }
 
-func (overlay *OverlayConn) processSessionTable(req, res *stun.Message) error {
+func (overlay *OverlayConn) processSessionTable(req *stun.Message) error {
+	// TODO
+	return nil
+}
+
+/*func (overlay *OverlayConn) processSessionTable(req, res *stun.Message) error {
 	var (
 		st   *SessionTable
 		addr *net.UDPAddr
@@ -430,7 +439,7 @@ func (overlay *OverlayConn) bindingPeer(addr *net.UDPAddr, msg *stun.Message) er
 		return err
 	}
 	return nil
-}
+}*/
 
 func (overlay *OverlayConn) processDataRequest(req, res *stun.Message, peer *Peer) error {
 	var (

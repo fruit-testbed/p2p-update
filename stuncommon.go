@@ -23,6 +23,19 @@ var (
 	stunDataError         = stun.NewType(stun.MethodData, stun.ClassErrorResponse)
 	stunBindingIndication = stun.NewType(stun.MethodBinding, stun.ClassIndication)
 
+	stunChannelBindRequest    = stun.NewType(stun.MethodChannelBind, stun.ClassRequest)
+	stunChannelBindIndication = stun.NewType(stun.MethodChannelBind, stun.ClassIndication)
+	/*stunChannelBindSuccess    = stun.NewType(stun.MethodChannelBind, stun.ClassSuccess)
+	stunChannelBindError      = stun.NewType(stun.MethodChannelBind, stun.ClassError)
+
+	stunSendRequest = stun.NewType(stun.MethodSend, stun.ClassRequest)
+	stunSendSuccess = stun.NewType(stun.MethodSend, stun.ClassSuccess)
+	stunSendError   = stun.NewType(stun.MethodSend, stun.ClassError)
+
+	stunDataRequest = stun.NewType(stun.MethodData, stun.ClassRequest)
+	stunDataSuccess = stun.NewType(stun.MethodData, stun.ClassSuccess)
+	stunDataError   = stun.NewType(stun.MethodData, stun.ClassError)*/
+
 	errNonSTUNMessage = errors.New("Not STUN Message")
 )
 
