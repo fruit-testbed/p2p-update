@@ -15,6 +15,7 @@ const (
 	advertiseSessionTableSleepTime = 60 * time.Second
 )
 
+// StunServer is a STUN server implementation for multicast messaging system
 type StunServer struct {
 	sync.RWMutex
 	Addr  *net.UDPAddr
@@ -22,6 +23,7 @@ type StunServer struct {
 	peers SessionTable
 }
 
+// NewStunServer returns an instance of StunServer
 func NewStunServer(address string) (*StunServer, error) {
 	var (
 		id   *PeerID
