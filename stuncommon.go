@@ -130,23 +130,33 @@ func validateMessage(m *stun.Message, t *stun.MessageType) error {
 	return nil
 }
 
-func piSerial() (*PeerID, error) {
+// RaspberryPiSerial returns the board serial number retrieved from /proc/cpuinfo
+func RaspberryPiSerial() (*PeerID, error) {
 	file, err := os.Open("/proc/cpuinfo")
 	if err != nil {
 		return nil, errors.Wrap(err, "cannot open /proc/cpuinfo")
 	}
 	defer file.Close()
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if len(line) > 10 && line[0:7] == "Serial\t" {
-			s := []byte(strings.TrimLeft(strings.Split(line, " ")[1], "0"))
-			var serial PeerID
-			_, err = hex.Decode(serial[:], s)
-			if err != nil {
+			var (
+				pid    PeerID
+				serial []byte
+			)
+
+			s := strings.TrimLeft(strings.Split(line, " ")[1], "0")
+			if serial, err = hex.DecodeString(s); err != nil {
 				return nil, errors.Wrapf(err, "failed converting %s to []byte", s)
 			}
-			return &serial, nil
+			j := len(pid) - 1
+			for i := len(serial) - 1; i >= 0 && j >= 0; i-- {
+				pid[j] = serial[i]
+				j--
+			}
+			return &pid, nil
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -173,7 +183,7 @@ func getActiveMacAddress() ([]byte, error) {
 }
 
 func localID() (*PeerID, error) {
-	if serial, err := piSerial(); err == nil {
+	if serial, err := RaspberryPiSerial(); err == nil {
 		return serial, nil
 	}
 
