@@ -81,10 +81,10 @@ func main() {
 			}
 			time.Sleep(time.Second)
 		}
-		time.Sleep(10 * time.Minute)
+		/*time.Sleep(10 * time.Minute)
 		log.Println("overlay's state:", overlay.automata.current)
 		overlay.Close()
 		time.Sleep(5 * time.Second)
-		log.Println("overlay's state:", overlay.automata.current)
+		log.Println("overlay's state:", overlay.automata.current)*/
 	}
 }
