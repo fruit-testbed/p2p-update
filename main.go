@@ -55,7 +55,6 @@ func main() {
 			overlay      *OverlayConn
 			msg          []byte
 			buf          [64 * 1024]byte
-			n            int
 			err          error
 		)
 		if raddr, err = net.ResolveUDPAddr("udp", *remoteAddr); err != nil {
@@ -67,6 +66,15 @@ func main() {
 		if overlay, err = NewOverlayConn(raddr, laddr); err != nil {
 			log.Fatalln("Cannot crete overlay:", err)
 		}
+		go func() {
+			for {
+				if n, err := overlay.Read(buf[:]); err != nil {
+					log.Println("failed reading from overlay", err)
+				} else {
+					log.Printf("read a message from overlay: %s", string(buf[:n]))
+				}
+			}
+		}()
 		msg = []byte(fmt.Sprintf("message from %s", overlay.ID))
 		for {
 			if _, err = overlay.Write(msg); err != nil {
@@ -74,17 +82,7 @@ func main() {
 			} else {
 				log.Println("successfully wrote to overlay")
 			}
-			if n, err = overlay.Read(buf[:]); err != nil {
-				log.Println("failed reading from overlay", err)
-			} else {
-				log.Printf("read a message from overlay: %s", string(buf[:n]))
-			}
 			time.Sleep(time.Second)
 		}
-		/*time.Sleep(10 * time.Minute)
-		log.Println("overlay's state:", overlay.automata.current)
-		overlay.Close()
-		time.Sleep(5 * time.Second)
-		log.Println("overlay's state:", overlay.automata.current)*/
 	}
 }
