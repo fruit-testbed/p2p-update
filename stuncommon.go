@@ -78,13 +78,13 @@ func (p Peer) String() string {
 // and values are pairs of [external-addr, internal-addr]
 type SessionTable map[PeerID][]*net.UDPAddr
 
-func (st SessionTable) AddTo(m *stun.Message) error {
+func (st *SessionTable) AddTo(m *stun.Message) error {
 	var (
 		data []byte
 		err  error
 	)
 
-	if data, err = msgpack.Marshal(&st); err == nil {
+	if data, err = msgpack.Marshal(st); err == nil {
 		m.Add(stun.AttrData, data)
 	}
 	return err
