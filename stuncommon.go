@@ -18,26 +18,23 @@ var (
 	stunRealm    = "fruit-testbed.org"
 	stunPassword = "123"
 
-	stunDataRequest       = stun.NewType(stun.MethodData, stun.ClassRequest)
-	stunDataSuccess       = stun.NewType(stun.MethodData, stun.ClassSuccessResponse)
-	stunDataError         = stun.NewType(stun.MethodData, stun.ClassErrorResponse)
-	stunBindingIndication = stun.NewType(stun.MethodBinding, stun.ClassIndication)
+	maxPacketDataSize = 56 * 1024
 
-	stunChannelBindRequest    = stun.NewType(stun.MethodChannelBind, stun.ClassRequest)
+	stunDataRequest           = stun.NewType(stun.MethodData, stun.ClassRequest)
+	stunDataSuccess           = stun.NewType(stun.MethodData, stun.ClassSuccessResponse)
+	stunDataError             = stun.NewType(stun.MethodData, stun.ClassErrorResponse)
+	stunBindingIndication     = stun.NewType(stun.MethodBinding, stun.ClassIndication)
 	stunChannelBindIndication = stun.NewType(stun.MethodChannelBind, stun.ClassIndication)
-	/*stunChannelBindSuccess    = stun.NewType(stun.MethodChannelBind, stun.ClassSuccess)
-	stunChannelBindError      = stun.NewType(stun.MethodChannelBind, stun.ClassError)
-
-	stunSendRequest = stun.NewType(stun.MethodSend, stun.ClassRequest)
-	stunSendSuccess = stun.NewType(stun.MethodSend, stun.ClassSuccess)
-	stunSendError   = stun.NewType(stun.MethodSend, stun.ClassError)
-
-	stunDataRequest = stun.NewType(stun.MethodData, stun.ClassRequest)
-	stunDataSuccess = stun.NewType(stun.MethodData, stun.ClassSuccess)
-	stunDataError   = stun.NewType(stun.MethodData, stun.ClassError)*/
 
 	errNonSTUNMessage = errors.New("Not STUN Message")
 )
+
+type PeerData []byte
+
+func (pd PeerData) AddTo(m *stun.Message) error {
+	m.Add(stun.AttrData, pd)
+	return nil
+}
 
 type PeerID [6]byte
 
