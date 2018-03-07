@@ -6,14 +6,14 @@ import (
 	"sync"
 )
 
-type automata struct {
-	sync.Mutex
+type Automata struct {
+	sync.RWMutex
 	current     int
 	transitions transitions // src->(event->dest)
 	callbacks   callbacks   // dest->callback
 }
 
-type transition struct {
+type Transition struct {
 	src   int
 	event int
 	dest  int
@@ -21,12 +21,12 @@ type transition struct {
 
 type transitions map[int]map[int]int
 
-type callback func(data []interface{})
+type Callback func(data []interface{})
 
-type callbacks map[int]callback
+type callbacks map[int]Callback
 
-func NewAutomata(current int, ts []transition, callbacks callbacks) *automata {
-	fsm := &automata{
+func NewAutomata(current int, ts []Transition, callbacks callbacks) *Automata {
+	fsm := &Automata{
 		current:     current,
 		transitions: make(transitions),
 		callbacks:   callbacks,
@@ -40,11 +40,17 @@ func NewAutomata(current int, ts []transition, callbacks callbacks) *automata {
 	return fsm
 }
 
-func (a *automata) event(event int, data ...interface{}) error {
+func (a *Automata) Current() int {
+	a.RLock()
+	defer a.RUnlock()
+	return a.current
+}
+
+func (a *Automata) Event(event int, data ...interface{}) error {
 	var (
 		dest int
 		ok   bool
-		cb   callback
+		cb   Callback
 	)
 	if dest, ok = a.transitions[a.current][event]; ok {
 		a.Lock()
