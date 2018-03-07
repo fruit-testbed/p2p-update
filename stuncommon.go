@@ -165,7 +165,10 @@ func RaspberryPiSerial() (*PeerID, error) {
 	return nil, errors.New("cannot find serial number from /proc/cpuinfo")
 }
 
-func getActiveMacAddress() ([]byte, error) {
+// ActiveMacAddress returns a MAC address of active network interface.
+// Note that ActiveMacAddress iterates the interfaces returned by `net.Interfaces`
+// from first to the last, and returns the first active interface.
+func ActiveMacAddress() ([]byte, error) {
 	var (
 		ifaces []net.Interface
 		err    error
@@ -188,7 +191,7 @@ func localID() (*PeerID, error) {
 	}
 
 	var pid PeerID
-	if mac, err := getActiveMacAddress(); err == nil && len(mac) >= 6 {
+	if mac, err := ActiveMacAddress(); err == nil && len(mac) >= 6 {
 		for i, b := range mac {
 			pid[i] = b
 		}
