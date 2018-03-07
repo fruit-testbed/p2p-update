@@ -29,24 +29,29 @@ var (
 	errNonSTUNMessage = errors.New("Not STUN Message")
 )
 
-type PeerData []byte
+// PeerMessage is a message sent by a peer.
+type PeerMessage []byte
 
-func (pd PeerData) AddTo(m *stun.Message) error {
+// AddTo writes a PeerMessage on given STUN message.
+func (pd PeerMessage) AddTo(m *stun.Message) error {
 	m.Add(stun.AttrData, pd)
 	return nil
 }
 
+// PeerID is an identifier of peer.
 type PeerID [6]byte
 
 func (pid PeerID) String() string {
 	return hex.EncodeToString(pid[:])
 }
 
+// AddTo writes a PeerID on given STUN message.
 func (pid *PeerID) AddTo(m *stun.Message) error {
 	m.Add(stun.AttrUsername, pid[:])
 	return nil
 }
 
+// GetFrom gets a PeerID from given STUN message.
 func (pid *PeerID) GetFrom(m *stun.Message) error {
 	var (
 		buf []byte
@@ -64,20 +69,12 @@ func (pid *PeerID) GetFrom(m *stun.Message) error {
 	return nil
 }
 
-type Peer struct {
-	ID           PeerID
-	InternalAddr net.UDPAddr
-	ExternalAddr net.UDPAddr
-}
-
-func (p Peer) String() string {
-	return fmt.Sprintf("%s[%s][%s]", p.ID.String(), p.InternalAddr.String(), p.ExternalAddr.String())
-}
-
 // SessionTable is a map whose keys are Peer IDs
-// and values are pairs of [external-addr, internal-addr]
+// and values are pairs of [external-addr, internal-addr].
 type SessionTable map[PeerID][]*net.UDPAddr
 
+// AddTo marshals a SessionTable as MessagePack data, then
+// writes it on given STUN message as AttrData.
 func (st *SessionTable) AddTo(m *stun.Message) error {
 	var (
 		data []byte
@@ -90,6 +87,8 @@ func (st *SessionTable) AddTo(m *stun.Message) error {
 	return err
 }
 
+// GetSessionTableFrom reads a MessagePack data from AttrData of given
+// STUN message, then unmarshals and returns it as SessionTable.
 func GetSessionTableFrom(m *stun.Message) (*SessionTable, error) {
 	var (
 		st   SessionTable
@@ -185,6 +184,9 @@ func ActiveMacAddress() ([]byte, error) {
 	return nil, errors.New("No active ethernet available")
 }
 
+// LocalPeerID returns a PeerID of local machine.
+// If the machine is Raspberry Pi, then it returns the board serial number.
+// Otherwise, it returns the MAC address of the first active network interface.
 func LocalPeerID() (*PeerID, error) {
 	if serial, err := RaspberryPiSerial(); err == nil {
 		return serial, nil

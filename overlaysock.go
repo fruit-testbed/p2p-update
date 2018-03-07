@@ -518,7 +518,7 @@ func (overlay *OverlayConn) Write(b []byte) (int, error) {
 	}
 }
 
-func (overlay *OverlayConn) multicastMessage(data PeerData) (int, error) {
+func (overlay *OverlayConn) multicastMessage(data PeerMessage) (int, error) {
 	var (
 		msg  *stun.Message
 		addr *net.UDPAddr
