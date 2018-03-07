@@ -29,7 +29,7 @@ func NewStunServer(address string) (*StunServer, error) {
 		err  error
 	)
 
-	if id, err = localID(); err != nil {
+	if id, err = LocalPeerID(); err != nil {
 		return nil, errors.Wrap(err, "Cannot get local ID")
 	}
 	if addr, err = net.ResolveUDPAddr("udp", address); err != nil {

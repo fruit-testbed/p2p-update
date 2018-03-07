@@ -86,7 +86,7 @@ func NewOverlayConn(rendezvousAddr, localAddr *net.UDPAddr) (*OverlayConn, error
 		err error
 	)
 
-	if pid, err = localID(); err != nil {
+	if pid, err = LocalPeerID(); err != nil {
 		return nil, errors.Wrap(err, "failed to get local ID")
 	}
 	log.Printf("local peer ID: %s", pid.String())

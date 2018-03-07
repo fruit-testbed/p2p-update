@@ -185,7 +185,7 @@ func ActiveMacAddress() ([]byte, error) {
 	return nil, errors.New("No active ethernet available")
 }
 
-func localID() (*PeerID, error) {
+func LocalPeerID() (*PeerID, error) {
 	if serial, err := RaspberryPiSerial(); err == nil {
 		return serial, nil
 	}
