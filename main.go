@@ -63,7 +63,7 @@ func main() {
 		if laddr, err = net.ResolveUDPAddr("udp", *localAddr); err != nil {
 			log.Fatalln("Cannot resolve local address (laddr):", err)
 		}
-		if overlay, err = NewOverlayConn(raddr, laddr); err != nil {
+		if overlay, err = NewOverlayConn(raddr, laddr, nil); err != nil {
 			log.Fatalln("Cannot crete overlay:", err)
 		}
 		go func() {

@@ -58,6 +58,7 @@ func (oc *overlayUDPConn) Close() error {
 type OverlayConn struct {
 	ID     PeerID
 	Reopen bool
+	Config *OverlayConfig
 
 	rendezvousAddr *net.UDPAddr
 	localAddr      *net.UDPAddr
@@ -80,7 +81,7 @@ type OverlayConn struct {
 
 // NewOverlayConn creates an overlay peer-to-peer connection that implements STUN
 // punching hole technique to directly communicate to peers behind NATs.
-func NewOverlayConn(rendezvousAddr, localAddr *net.UDPAddr) (*OverlayConn, error) {
+func NewOverlayConn(rendezvousAddr, localAddr *net.UDPAddr, cfg *OverlayConfig) (*OverlayConn, error) {
 	var (
 		pid *PeerID
 		err error
@@ -90,9 +91,11 @@ func NewOverlayConn(rendezvousAddr, localAddr *net.UDPAddr) (*OverlayConn, error
 		return nil, errors.Wrap(err, "failed to get local ID")
 	}
 	log.Printf("local peer ID: %s", pid.String())
+	cfg.check()
 	overlay := &OverlayConn{
 		ID:             *pid,
 		Reopen:         true,
+		Config:         cfg,
 		rendezvousAddr: rendezvousAddr,
 		localAddr:      localAddr,
 		peers:          make(SessionTable),
@@ -103,14 +106,49 @@ func NewOverlayConn(rendezvousAddr, localAddr *net.UDPAddr) (*OverlayConn, error
 	return overlay, nil
 }
 
+// OverlayConfig decribes the configurations of OverlayConn
+type OverlayConfig struct {
+	BindingWaitTime      time.Duration
+	BindingErrorsLimit   int
+	ListeningWaitTime    time.Duration
+	ListeningErrorsLimit int
+	ReadBufferSize       int
+	BackoffDuration      time.Duration
+	ChannelDuration      time.Duration
+}
+
+func (cfg *OverlayConfig) check() {
+	if cfg.BindingWaitTime == 0 {
+		cfg.BindingWaitTime = defaultBindingWaitTime
+	}
+	if cfg.BindingErrorsLimit == 0 {
+		cfg.BindingErrorsLimit = defaultBindingErrorsLimit
+	}
+	if cfg.ListeningWaitTime == 0 {
+		cfg.ListeningWaitTime = defaultListeningWaitTime
+	}
+	if cfg.ListeningErrorsLimit == 0 {
+		cfg.ListeningErrorsLimit = defaultListeningErrorsLimit
+	}
+	if cfg.ReadBufferSize == 0 {
+		cfg.ReadBufferSize = defaultReadBufferSize
+	}
+	if cfg.BackoffDuration == 0 {
+		cfg.BackoffDuration = defaultBackoffDuration
+	}
+	if cfg.ChannelDuration == 0 {
+		cfg.ChannelDuration = defaultChannelDuration
+	}
+}
+
 const (
-	bindWaitTime      = 30 * time.Second
-	bindErrorsLimit   = 10
-	listenWaitTime    = 30 * time.Second
-	listenErrorsLimit = 10
-	readBufferSize    = 64 * 1024 // buffer size to read UDP packet
-	backoffDuration   = 10 * time.Second
-	channelDuration   = 60 * time.Second
+	defaultBindingWaitTime      = 30 * time.Second
+	defaultBindingErrorsLimit   = 10
+	defaultListeningWaitTime    = 30 * time.Second
+	defaultListeningErrorsLimit = 10
+	defaultReadBufferSize       = 64 * 1024 // buffer size to read UDP packet
+	defaultBackoffDuration      = 10 * time.Second
+	defaultChannelDuration      = 60 * time.Second
 )
 
 const (
@@ -202,8 +240,8 @@ func (overlay *OverlayConn) opening([]interface{}) {
 
 	if overlay.conn, err = newOverlayUDPConn(overlay.rendezvousAddr, overlay.localAddr); err != nil {
 		log.Printf("failed opening UDP connection (backing off for %v): %v",
-			backoffDuration, err)
-		time.Sleep(backoffDuration)
+			overlay.Config.BackoffDuration, err)
+		time.Sleep(overlay.Config.BackoffDuration)
 		overlay.automata.Event(eventError)
 	} else {
 		overlay.stun, err = stun.NewClient(
@@ -212,7 +250,7 @@ func (overlay *OverlayConn) opening([]interface{}) {
 			})
 		if err != nil {
 			log.Printf("failed dialing the STUN server at %s (backing off for %v) - %v",
-				backoffDuration, overlay.rendezvousAddr, err)
+				overlay.Config.BackoffDuration, overlay.rendezvousAddr, err)
 			overlay.automata.Event(eventError)
 		} else {
 			log.Printf("local address: %s", overlay.conn.conn.LocalAddr().String())
@@ -231,7 +269,7 @@ func (overlay *OverlayConn) binding([]interface{}) {
 		err error
 	)
 
-	deadline := time.Now().Add(bindWaitTime)
+	deadline := time.Now().Add(overlay.Config.BindingWaitTime)
 
 	handler := stun.HandlerFunc(func(e stun.Event) {
 		if e.Error != nil {
@@ -253,7 +291,7 @@ func (overlay *OverlayConn) binding([]interface{}) {
 			log.Println("XORMappedAddress", overlay.externalAddr)
 			log.Println("LocalAddr", overlay.conn.conn.LocalAddr())
 			log.Println("bindingSuccess")
-			overlay.channelExpired = time.Now().Add(channelDuration)
+			overlay.channelExpired = time.Now().Add(overlay.Config.ChannelDuration)
 			overlay.automata.Event(eventSuccess)
 		}
 	})
@@ -296,9 +334,9 @@ func (overlay *OverlayConn) bindingRequestMessage() (*stun.Message, error) {
 
 func (overlay *OverlayConn) bindError([]interface{}) {
 	overlay.errCount++
-	if overlay.errCount >= bindErrorsLimit {
+	if overlay.errCount >= overlay.Config.BindingErrorsLimit {
 		overlay.errCount = 0
-		time.Sleep(backoffDuration)
+		time.Sleep(overlay.Config.BackoffDuration)
 		overlay.automata.Event(eventOverLimit)
 	} else {
 		overlay.automata.Event(eventUnderLimit)
@@ -307,7 +345,7 @@ func (overlay *OverlayConn) bindError([]interface{}) {
 
 func (overlay *OverlayConn) listening([]interface{}) {
 	var (
-		buf = make([]byte, readBufferSize)
+		buf = make([]byte, overlay.Config.ReadBufferSize)
 
 		n    int
 		addr *net.UDPAddr
@@ -325,7 +363,7 @@ func (overlay *OverlayConn) listening([]interface{}) {
 			overlay.automata.Event(eventError)
 		}
 	} else {
-		overlay.channelExpired = time.Now().Add(channelDuration)
+		overlay.channelExpired = time.Now().Add(overlay.Config.ChannelDuration)
 		overlay.msg, overlay.addr = buf[:n], addr
 		overlay.automata.Event(eventSuccess)
 	}
@@ -464,7 +502,7 @@ func (overlay *OverlayConn) buildDataSuccessMessage(req, res *stun.Message) erro
 
 func (overlay *OverlayConn) messageError([]interface{}) {
 	overlay.errCount++
-	if overlay.errCount >= listenErrorsLimit {
+	if overlay.errCount >= overlay.Config.ListeningErrorsLimit {
 		overlay.errCount = 0
 		overlay.automata.Event(eventOverLimit)
 	} else {
