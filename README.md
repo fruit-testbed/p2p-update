@@ -1,9 +1,9 @@
 # Peer-to-Peer Secure Update
 
 This project aims to provide a framework to securely distribute system update
-peer-to-peer procotol that works in heterogeneous network environment, in the
-presence of NATs and firewalls, where there is no necessarily direct access
-from a management node to the devices being updated.
+using peer-to-peer procotol that works in heterogeneous network environment,
+in the presence of NATs and firewalls, where there is no necessarily direct
+access from a management node to the devices being updated.
 
 The framework combines several key techniques:
 1. STUN-based UDP hole punching to discover and open NAT bindings
