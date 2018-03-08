@@ -514,6 +514,20 @@ func (overlay *OverlayConn) messageError([]interface{}) {
 	}
 }
 
+// ReadMsg returns a multicast message sent by other peer.
+func (overlay *OverlayConn) ReadMsg() ([]byte, error) {
+	deadline := overlay.readDeadline
+	if deadline == nil {
+		return <-overlay.peerDataChan, nil
+	}
+	select {
+	case data := <-overlay.peerDataChan:
+		return data, nil
+	case <-time.After(deadline.Sub(time.Now())):
+	}
+	return nil, fmt.Errorf("read timeout")
+}
+
 // Read reads a multicast message sent by other
 func (overlay *OverlayConn) Read(b []byte) (int, error) {
 	if b == nil {
