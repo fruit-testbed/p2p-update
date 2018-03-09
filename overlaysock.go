@@ -95,6 +95,9 @@ func NewOverlayConn(rendezvousAddr, localAddr *net.UDPAddr, cfg *OverlayConfig) 
 		return nil, errors.Wrap(err, "failed to get local ID")
 	}
 	log.Printf("local peer ID: %s", pid.String())
+	if cfg == nil {
+		cfg = &OverlayConfig{}
+	}
 	cfg.check()
 	overlay := &OverlayConn{
 		ID:             *pid,
