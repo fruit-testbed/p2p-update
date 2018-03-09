@@ -11,3 +11,16 @@ The framework combines several key techniques:
 3. BitTorrent to securely distribute the software update
 
 This project is part of Federated RaspberryPi micro-Infrastructure Testbed - [FRuIT](https://fruit-testbed.org).
+
+
+- To run the STUN server
+
+    ```
+    $ p2pupdate server --address 0.0.0.0:3478
+    ```
+
+- To run the agent
+
+    ```
+    $ p2pupdate agent -server fruit-testbed.org:3478 --address 10.0.0.5:9322
+    ```
