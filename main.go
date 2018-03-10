@@ -20,10 +20,14 @@ func serverCmd(ctx *cli.Context) error {
 	var (
 		wg  sync.WaitGroup
 		s   *StunServer
+		cfg *ServerConfig
 		err error
 	)
 
-	if s, err = NewStunServer(ctx.String("address")); err != nil {
+	if cfg, err = NewServerConfigFromFile(ctx.GlobalString("config-file")); err != nil {
+		return err
+	}
+	if s, err = NewStunServer(ctx.String("address"), cfg); err != nil {
 		return err
 	}
 	wg.Add(1)
@@ -96,6 +100,13 @@ func main() {
 	app.Usage = "Peer-to-peer secure update"
 	app.Version = "0.0.1"
 	app.EnableBashCompletion = true
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "config-file",
+			Value: "",
+			Usage: "Path of config file",
+		},
+	}
 	app.Commands = []cli.Command{
 		{
 			Name:   "agent",

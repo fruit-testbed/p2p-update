@@ -5,7 +5,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"sync"
@@ -16,8 +18,45 @@ import (
 )
 
 const (
-	advertiseSessionTableSleepTime = 60 * time.Second
+	defaultSessionTableAdvertiseDuration = 60 * time.Second
 )
+
+// ServerConfig contains the server configuration parameters.
+type ServerConfig struct {
+	Address      string `json:"address"`
+	SessionTable struct {
+		AdvertiseDuration time.Duration `json:"advertise-duration"`
+	} `json:"session-table"`
+	Redis struct {
+		Address string `json:"address"`
+	} `json:"redis"`
+}
+
+// NewServerConfigFromFile loads and returns configurations from given JSON
+// file.
+func NewServerConfigFromFile(f string) (*ServerConfig, error) {
+	var cfg ServerConfig
+
+	if f != "" {
+		raw, err := ioutil.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+		if err = json.Unmarshal(raw, &cfg); err != nil {
+			return nil, err
+		}
+	}
+	return &cfg, nil
+}
+
+func (cfg *ServerConfig) check() {
+	if cfg.SessionTable.AdvertiseDuration == 0 {
+		cfg.SessionTable.AdvertiseDuration = defaultSessionTableAdvertiseDuration
+	}
+	if cfg.Redis.Address == "" {
+		cfg.Redis.Address = "127.0.0.1:6379"
+	}
+}
 
 // StunServer is a STUN server implementation for multicast messaging system
 type StunServer struct {
@@ -25,26 +64,35 @@ type StunServer struct {
 	Addr  *net.UDPAddr
 	ID    PeerID
 	peers SessionTable
+	cfg   *ServerConfig
 }
 
 // NewStunServer returns an instance of StunServer
-func NewStunServer(address string) (*StunServer, error) {
+func NewStunServer(address string, cfg *ServerConfig) (*StunServer, error) {
 	var (
 		id   *PeerID
 		addr *net.UDPAddr
 		err  error
 	)
 
+	if cfg == nil {
+		cfg = &ServerConfig{}
+	}
+	cfg.check()
+	if cfg.Address == "" {
+		cfg.Address = address
+	}
+	if addr, err = net.ResolveUDPAddr("udp", cfg.Address); err != nil {
+		return nil, errors.Wrapf(err, "failed resolving address %s", address)
+	}
 	if id, err = LocalPeerID(); err != nil {
 		return nil, errors.Wrap(err, "Cannot get local ID")
-	}
-	if addr, err = net.ResolveUDPAddr("udp", address); err != nil {
-		return nil, errors.Wrapf(err, "failed resolving address %s", address)
 	}
 	return &StunServer{
 		Addr:  addr,
 		ID:    *id,
 		peers: make(SessionTable),
+		cfg:   cfg,
 	}, nil
 }
 
@@ -59,9 +107,9 @@ func (s *StunServer) run(wg *sync.WaitGroup) {
 
 	go func() {
 		log.Printf("start a thread that advertises session table every %ss",
-			advertiseSessionTableSleepTime)
+			s.cfg.SessionTable.AdvertiseDuration)
 		for {
-			time.Sleep(advertiseSessionTableSleepTime)
+			time.Sleep(s.cfg.SessionTable.AdvertiseDuration)
 			if err := s.advertiseSessionTable(conn); err != nil {
 				log.Println(err)
 			}
