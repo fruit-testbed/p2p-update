@@ -68,16 +68,13 @@ type StunServer struct {
 }
 
 // NewStunServer returns an instance of StunServer
-func NewStunServer(address string, cfg *ServerConfig) (*StunServer, error) {
+func NewStunServer(address string, cfg ServerConfig) (*StunServer, error) {
 	var (
 		id   *PeerID
 		addr *net.UDPAddr
 		err  error
 	)
 
-	if cfg == nil {
-		cfg = &ServerConfig{}
-	}
 	cfg.check()
 	if cfg.Address == "" {
 		cfg.Address = address
@@ -92,7 +89,7 @@ func NewStunServer(address string, cfg *ServerConfig) (*StunServer, error) {
 		Addr:  addr,
 		ID:    *id,
 		peers: make(SessionTable),
-		cfg:   cfg,
+		cfg:   &cfg,
 	}, nil
 }
 

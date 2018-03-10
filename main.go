@@ -7,7 +7,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"sync"
 	"time"
@@ -27,7 +26,7 @@ func serverCmd(ctx *cli.Context) error {
 	if cfg, err = NewServerConfigFromFile(ctx.GlobalString("config-file")); err != nil {
 		return err
 	}
-	if s, err = NewStunServer(ctx.String("address"), cfg); err != nil {
+	if s, err = NewStunServer(ctx.String("address"), *cfg); err != nil {
 		return err
 	}
 	wg.Add(1)
@@ -39,19 +38,16 @@ func serverCmd(ctx *cli.Context) error {
 
 func agentCmd(ctx *cli.Context) error {
 	var (
-		server, local *net.UDPAddr
-		overlay       *OverlayConn
-		msg           []byte
-		buf           [64 * 1024]byte
-		err           error
+		cfg     *OverlayConfig
+		overlay *OverlayConn
+		msg     []byte
+		buf     [64 * 1024]byte
+		err     error
 	)
-	if server, err = net.ResolveUDPAddr("udp", ctx.String("server")); err != nil {
-		log.Fatalln("Cannot resolve STUN server address (raddr):", err)
+	if cfg, err = NewOverlayConfigFromFile(ctx.GlobalString("config-file")); err != nil {
+		return err
 	}
-	if local, err = net.ResolveUDPAddr("udp", ctx.String("address")); err != nil {
-		log.Fatalln("Cannot resolve local address (laddr):", err)
-	}
-	if overlay, err = NewOverlayConn(server, local, nil); err != nil {
+	if overlay, err = NewOverlayConn(ctx.String("server"), ctx.String("address"), *cfg); err != nil {
 		log.Fatalln("Cannot crete overlay:", err)
 	}
 	go func() {
