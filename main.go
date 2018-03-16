@@ -5,15 +5,66 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/gortc/stun"
+	"github.com/spacemonkeygo/openssl"
 	"gopkg.in/urfave/cli.v1"
 )
+
+func adminCmd(ctx *cli.Context) error {
+	var (
+		mi      *Metainfo
+		content []byte
+		privKey openssl.PrivateKey
+		pubKey  openssl.PublicKey
+		err     error
+	)
+
+	if content, err = ioutil.ReadFile(ctx.String("private-key")); err != nil {
+		return err
+	}
+	if privKey, err = openssl.LoadPrivateKeyFromPEM(content); err != nil {
+		return err
+	}
+
+	mi, err = NewMetainfo(
+		ctx.String("file"),
+		ctx.String("uuid"),
+		ctx.String("version"),
+		PublicAnnounceList,
+		DefaultPieceLength,
+		&privKey)
+	if err != nil {
+		return err
+	}
+	if err = mi.WriteToFile("foo.torrent"); err != nil {
+		return err
+	}
+	j1, _ := json.Marshal(*mi)
+	log.Println(string(j1))
+
+	if mi, err = LoadMetainfoFromFile("foo.torrent"); err != nil {
+		return err
+	}
+	j2, _ := json.Marshal(*mi)
+	log.Println(string(j2))
+	if content, err = ioutil.ReadFile(fmt.Sprintf("%s.pub", ctx.String("private-key"))); err != nil {
+		return err
+	}
+	if pubKey, err = openssl.LoadPublicKeyFromPEM(content); err != nil {
+		return err
+	}
+	err = mi.Verify(pubKey)
+	log.Printf("verification error: %v", err)
+	return err
+}
 
 func serverCmd(ctx *cli.Context) error {
 	var (
@@ -104,6 +155,29 @@ func main() {
 		},
 	}
 	app.Commands = []cli.Command{
+		{
+			Name:   "admin",
+			Usage:  "admin mode",
+			Action: adminCmd,
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "file",
+					Usage: "Update file",
+				},
+				cli.StringFlag{
+					Name:  "version",
+					Usage: "Update version",
+				},
+				cli.StringFlag{
+					Name:  "uuid",
+					Usage: "Target resource UUID",
+				},
+				cli.StringFlag{
+					Name:  "private-key",
+					Usage: "Private key for signing",
+				},
+			},
+		},
 		{
 			Name:   "agent",
 			Usage:  "agent mode",
