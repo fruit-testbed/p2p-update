@@ -1,5 +1,5 @@
 [x] agent/server STUN hole punching
-[ ] create bittorrent file from given binary file
+[x] create bittorrent file from given binary file
 [ ] gossip protocol over UDP multicast
 [ ] http on unix socket so that a user can
     [ ] submit a new update
