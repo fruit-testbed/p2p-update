@@ -87,7 +87,7 @@ type OverlayConn struct {
 
 // NewOverlayConn creates an overlay peer-to-peer connection that implements STUN
 // punching hole technique to directly communicate to peers behind NATs.
-func NewOverlayConn(rendezvousAddr, localAddr string, cfg OverlayConfig) (*OverlayConn, error) {
+func NewOverlayConn(cfg OverlayConfig) (*OverlayConn, error) {
 	var (
 		server, local *net.UDPAddr
 		pid           *PeerID
@@ -99,12 +99,6 @@ func NewOverlayConn(rendezvousAddr, localAddr string, cfg OverlayConfig) (*Overl
 	}
 	log.Printf("local peer ID: %s", pid.String())
 	cfg.check()
-	if cfg.Address == "" {
-		cfg.Address = localAddr
-	}
-	if cfg.Server == "" {
-		cfg.Server = rendezvousAddr
-	}
 	if server, err = net.ResolveUDPAddr("udp", cfg.Server); err != nil {
 		return nil, fmt.Errorf("Cannot resolve server address: %v", err)
 	}

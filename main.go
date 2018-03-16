@@ -11,7 +11,6 @@ import (
 	"log"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/gortc/stun"
 	"github.com/spacemonkeygo/openssl"
@@ -89,36 +88,19 @@ func serverCmd(ctx *cli.Context) error {
 
 func agentCmd(ctx *cli.Context) error {
 	var (
-		cfg     *OverlayConfig
-		overlay *OverlayConn
-		msg     []byte
-		buf     [64 * 1024]byte
-		err     error
+		f   *os.File
+		cfg AgentConfig
+		err error
 	)
-	if cfg, err = NewOverlayConfigFromFile(ctx.GlobalString("config-file")); err != nil {
+
+	if f, err = os.Open(ctx.GlobalString("config-file")); err != nil {
 		return err
 	}
-	if overlay, err = NewOverlayConn(ctx.String("server"), ctx.String("address"), *cfg); err != nil {
-		log.Fatalln("Cannot crete overlay:", err)
+	if err = json.NewDecoder(f).Decode(&cfg); err != nil {
+		return err
 	}
-	go func() {
-		for {
-			if n, err := overlay.Read(buf[:]); err != nil {
-				log.Println("failed reading from overlay", err)
-			} else {
-				log.Printf("read a message from overlay: %s", string(buf[:n]))
-			}
-		}
-	}()
-	msg = []byte(fmt.Sprintf("message from %s", overlay.ID))
-	for {
-		if _, err = overlay.Write(msg); err != nil {
-			log.Println("failed writing to overlay:", err)
-		} else {
-			log.Println("successfully wrote to overlay")
-		}
-		time.Sleep(time.Second)
-	}
+	a := &Agent{}
+	return a.Start(cfg)
 }
 
 func sendCmd(ctx *cli.Context) error {
