@@ -77,6 +77,34 @@ func (pid *PeerID) GetFrom(m *stun.Message) error {
 // and values are pairs of [external-addr, internal-addr].
 type SessionTable map[PeerID][]*net.UDPAddr
 
+func (st *SessionTable) JSON() []byte {
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	i := 0
+	for pid, addrs := range *st {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		buf.WriteByte('"')
+		buf.WriteString(pid.String())
+		buf.WriteByte('"')
+		buf.WriteByte(':')
+		buf.WriteByte('[')
+		for j, addr := range addrs {
+			if j > 0 {
+				buf.WriteByte(',')
+			}
+			buf.WriteByte('"')
+			buf.WriteString(addr.String())
+			buf.WriteByte('"')
+		}
+		buf.WriteByte(']')
+		i += 1
+	}
+	buf.WriteByte('}')
+	return buf.Bytes()
+}
+
 // AddTo marshals a SessionTable as MessagePack data, then
 // writes it on given STUN message as AttrData.
 func (st *SessionTable) AddTo(m *stun.Message) error {
