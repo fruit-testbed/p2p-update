@@ -72,14 +72,12 @@ func (a *Agent) Start(cfg AgentConfig) error {
 
 func (a *Agent) startOverlay() error {
 	var (
-		//msg []byte
 		buf [64 * 1024]byte
 		err error
 	)
 	if a.Overlay, err = NewOverlayConn(a.Config.OverlayConfig); err != nil {
 		return err
 	}
-	//go func() {
 	for {
 		if n, err := a.Overlay.Read(buf[:]); err != nil {
 			log.Println("failed reading from overlay", err)
@@ -87,16 +85,6 @@ func (a *Agent) startOverlay() error {
 			log.Printf("read a message from overlay: %s", string(buf[:n]))
 		}
 	}
-	//}()
-	/*msg = []byte(fmt.Sprintf("message from %s", a.Overlay.ID))
-	for {
-		if _, err = a.Overlay.Write(msg); err != nil {
-			log.Println("failed writing to overlay:", err)
-		} else {
-			log.Println("successfully wrote to overlay")
-		}
-		time.Sleep(time.Second)
-	}*/
 }
 
 func (a *Agent) cleanup() {
@@ -130,24 +118,6 @@ func (a *Agent) restRequestHandler(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-type UpdatePostBody struct {
-	Torrent  Metainfo
-	Filename string
-}
-
-func (b *UpdatePostBody) validate() error {
-	info := metainfo.Info{
-		PieceLength: b.Torrent.InfoBytes.PieceLength,
-	}
-	if err := info.BuildFromFilePath(b.Filename); err != nil {
-		return fmt.Errorf("ERROR: failed to generate piece-hashes from '%s': %v", b.Filename, err)
-	}
-	if bytes.Compare(info.Pieces, b.Torrent.InfoBytes.Pieces) != 0 {
-		return fmt.Errorf("ERROR: piece-hashes of '%s' and torrent-file do not match", b.Filename)
-	}
-	return nil
-}
-
 func (a *Agent) restRequestUpdate(ctx *fasthttp.RequestCtx) {
 	switch string(ctx.Method()) {
 	case "POST":
@@ -159,22 +129,22 @@ func (a *Agent) restRequestUpdate(ctx *fasthttp.RequestCtx) {
 
 func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 	var (
-		body UpdatePostBody
-		b    []byte
-		err  error
+		update Update
+		b      []byte
+		err    error
 	)
 
-	if err = json.Unmarshal(ctx.PostBody(), &body); err != nil {
-		log.Printf("failed to decode request body: %v", err)
+	if err = json.Unmarshal(ctx.PostBody(), &update); err != nil {
+		log.Printf("failed to decode request update: %v", err)
 		ctx.Response.SetStatusCode(400)
-	} else if err = body.Torrent.Verify(a.PublicKey); err != nil {
+	} else if err = update.Torrent.Verify(a.PublicKey); err != nil {
 		log.Printf("invalid torrent-file: %v", err)
 		ctx.Response.SetStatusCode(406)
-	} else if err = body.validate(); err != nil {
+	} else if err = update.validate(); err != nil {
 		log.Printf("torrent and update file do not match: %v", err)
 		ctx.Response.SetStatusCode(406)
 	} else {
-		if b, err = bencode.EncodeBytes(body.Torrent); err != nil {
+		if b, err = bencode.EncodeBytes(update.Torrent); err != nil {
 			log.Printf("failed to generating bencode from torrent-file: %v", err)
 			ctx.Response.SetStatusCode(500)
 		} else if _, err = a.Overlay.Write(b); err != nil {
@@ -194,4 +164,22 @@ func (a *Agent) restRequestOverlayPeers(ctx *fasthttp.RequestCtx) {
 	default:
 		ctx.Response.SetStatusCode(400)
 	}
+}
+
+type Update struct {
+	Torrent  Metainfo
+	Filename string
+}
+
+func (u *Update) validate() error {
+	info := metainfo.Info{
+		PieceLength: u.Torrent.InfoBytes.PieceLength,
+	}
+	if err := info.BuildFromFilePath(u.Filename); err != nil {
+		return fmt.Errorf("ERROR: failed to generate piece-hashes from '%s': %v", u.Filename, err)
+	}
+	if bytes.Compare(info.Pieces, u.Torrent.InfoBytes.Pieces) != 0 {
+		return fmt.Errorf("ERROR: piece-hashes of '%s' and torrent-file do not match", u.Filename)
+	}
+	return nil
 }
