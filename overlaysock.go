@@ -597,16 +597,16 @@ func (overlay *OverlayConn) Write(b []byte) (int, error) {
 		return 0, fmt.Errorf("data is too large, maximum %d bytes", maxPacketDataSize)
 	}
 
-	for {
-		if overlay.writeDeadline != nil && overlay.writeDeadline.After(time.Now()) {
-			return 0, fmt.Errorf("write timeout")
+	// TODO: apply writeDeadline
+	current := overlay.automata.Current()
+	switch current {
+	case stateListening, stateProcessingMessage:
+		if _, err := overlay.multicastMessage(b); err != nil {
+			return 0, err
 		}
-		switch overlay.automata.Current() {
-		case stateListening, stateProcessingMessage:
-			return overlay.multicastMessage(b)
-		default:
-			time.Sleep(100 * time.Millisecond)
-		}
+		return len(b), nil
+	default:
+		return 0, fmt.Errorf("connection (state: %d) is not ready", current)
 	}
 }
 
@@ -637,7 +637,7 @@ func (overlay *OverlayConn) multicastMessage(data PeerMessage) (int, error) {
 			addr = addrs[1]
 		}
 		if err == nil {
-			_, err = overlay.conn.conn.WriteToUDP(msg.Raw, addr)
+			_, err = overlay.conn.conn.WriteTo(msg.Raw, addr)
 		}
 		if err != nil {
 			log.Printf("WARNING: failed sending data request to %s[%s][%s] - %v",
@@ -648,7 +648,7 @@ func (overlay *OverlayConn) multicastMessage(data PeerMessage) (int, error) {
 				id, addrs[0].String(), addrs[1].String())
 		}
 	}
-	return 0, nil
+	return len(data), nil
 }
 
 // Close closes the overlay.

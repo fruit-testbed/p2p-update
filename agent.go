@@ -11,6 +11,7 @@ import (
 
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/spacemonkeygo/openssl"
+	"github.com/zeebo/bencode"
 
 	"github.com/valyala/fasthttp"
 )
@@ -157,19 +158,26 @@ func (a *Agent) restRequestUpdate(ctx *fasthttp.RequestCtx) {
 }
 
 func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
-	var body UpdatePostBody
-	if err := json.Unmarshal(ctx.PostBody(), &body); err != nil {
+	var (
+		body UpdatePostBody
+		b    []byte
+		err  error
+	)
+
+	if err = json.Unmarshal(ctx.PostBody(), &body); err != nil {
 		log.Printf("failed to decode request body: %v", err)
 		ctx.Response.SetStatusCode(400)
-	} else if err := body.Torrent.Verify(a.PublicKey); err != nil {
+	} else if err = body.Torrent.Verify(a.PublicKey); err != nil {
 		log.Printf("invalid torrent-file: %v", err)
 		ctx.Response.SetStatusCode(406)
-	} else if err := body.validate(); err != nil {
+	} else if err = body.validate(); err != nil {
 		log.Printf("torrent and update file do not match: %v", err)
 		ctx.Response.SetStatusCode(406)
 	} else {
-		//a.Overlay.SetWriteDeadline(time.Now().Add(3 * time.Second))
-		if err := body.Torrent.Write(a.Overlay); err != nil {
+		if b, err = bencode.EncodeBytes(body.Torrent); err != nil {
+			log.Printf("failed to generating bencode from torrent-file: %v", err)
+			ctx.Response.SetStatusCode(500)
+		} else if _, err = a.Overlay.Write(b); err != nil {
 			log.Printf("failed to distribute the torrent-file: %v", err)
 			ctx.Response.SetStatusCode(500)
 		} else {

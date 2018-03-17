@@ -1,4 +1,7 @@
 {
-  "address": "192.168.0.5:9322",
-  "server": "192.168.0.5:3478"
+  "public-key-file": "fruit-key.pub",
+  "overlay": {
+    "address": "192.168.0.5:9322",
+    "server": "192.168.0.5:3478"
+  }
 }
