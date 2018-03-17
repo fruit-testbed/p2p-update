@@ -6,4 +6,9 @@
 
 BIN=p2pupdate
 
-go build -ldflags="$FLAGS" -o $BIN *.go
+if [ "$1" = "rpi" ]; then
+  GOOS=linux GOARCH=arm GOARM=6 \
+    go build -ldflags="$FLAGS" -o $BIN *.go
+else
+  go build -ldflags="$FLAGS" -o $BIN *.go
+fi
