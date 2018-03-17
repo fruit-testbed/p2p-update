@@ -1,8 +1,11 @@
 [x] agent/server STUN hole punching
 [x] create bittorrent file from given binary file
+[x] http on unix socket so that a user can
+    [x] submit a new update
+    [x] query overlay's peers (session-table)
 [ ] gossip protocol over UDP multicast
-[ ] http on unix socket so that a user can
-    [ ] submit a new update
-    [ ] query server/agent status (e.g. session-table)
+    [x] send torrent-file from one to another peer
+    [ ] multicast torrent-file
+[ ] invoke bittorrent upload to serve update file
 [ ] invoke bittorrent download when it receives a new update notification
 [ ] deploy the update
