@@ -9,3 +9,9 @@
 
 # Helper scripts
 /bencode-to-json.py
+
+# key file
+/fruit-key.pub
+
+# Example REST API Post data
+/update.json
