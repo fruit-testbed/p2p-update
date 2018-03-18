@@ -23,6 +23,7 @@ func adminCmd(ctx *cli.Context) error {
 		content []byte
 		privKey openssl.PrivateKey
 		pubKey  openssl.PublicKey
+		cfg     AgentConfig
 		err     error
 	)
 
@@ -33,11 +34,20 @@ func adminCmd(ctx *cli.Context) error {
 		return err
 	}
 
+	cfg, err = NewAgentConfig(ctx.GlobalString("config-file"))
+	if err != nil {
+		return err
+	}
+	trackers := make([][]string, len(cfg.BitTorrent.Trackers))
+	for i, t := range cfg.BitTorrent.Trackers {
+		trackers[i] = []string{t}
+	}
+
 	mi, err = NewMetainfo(
 		ctx.String("file"),
 		ctx.String("uuid"),
 		ctx.Int("version"),
-		PublicAnnounceList,
+		trackers,
 		DefaultPieceLength,
 		&privKey)
 	if err != nil {
@@ -87,16 +97,8 @@ func serverCmd(ctx *cli.Context) error {
 }
 
 func agentCmd(ctx *cli.Context) error {
-	var (
-		f   *os.File
-		cfg AgentConfig
-		err error
-	)
-
-	if f, err = os.Open(ctx.GlobalString("config-file")); err != nil {
-		return err
-	}
-	if err = json.NewDecoder(f).Decode(&cfg); err != nil {
+	cfg, err := NewAgentConfig(ctx.GlobalString("config-file"))
+	if err != nil {
 		return err
 	}
 	return Agent{}.Start(cfg)

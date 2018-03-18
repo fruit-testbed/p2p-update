@@ -21,12 +21,12 @@ const (
 )
 
 var (
-	// PublicAnnounceList contains a list of public BitTorrent trackers
-	PublicAnnounceList = [][]string{
-		{"udp://tracker.openbittorrent.com:80"},
-		{"udp://tracker.publicbt.com:80"},
-		{"udp://tracker.istole.it:6969"},
-	}
+// PublicAnnounceList contains a list of public BitTorrent trackers
+/*PublicAnnounceList = [][]string{
+	{"udp://tracker.openbittorrent.com:80"},
+	{"udp://tracker.publicbt.com:80"},
+	{"udp://tracker.istole.it:6969"},
+}*/
 )
 
 // Metainfo holds data of torrent file

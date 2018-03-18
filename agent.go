@@ -44,9 +44,23 @@ type AgentConfig struct {
 	} `json:"api,omitempty"`
 
 	BitTorrent struct {
-		DataDir string `json:"data-dir,omitempty"`
-		DHT     bool   `json:"dht,omitempty"`
+		DataDir  string   `json:"data-dir,omitempty"`
+		DHT      bool     `json:"dht,omitempty"`
+		Trackers []string `json:"trackers,omitempty"`
 	} `json:"bittorrent,omitempty"`
+}
+
+func NewAgentConfig(filename string) (AgentConfig, error) {
+	var (
+		f   *os.File
+		cfg AgentConfig
+		err error
+	)
+
+	if f, err = os.Open(filename); err == nil {
+		err = json.NewDecoder(f).Decode(&cfg)
+	}
+	return cfg, err
 }
 
 func (a Agent) Start(cfg AgentConfig) error {
