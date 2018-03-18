@@ -50,6 +50,7 @@ type AgentConfig struct {
 		DHT     bool   `json:"dht,omitempty"`
 		Tracker string `json:"tracker,omitempty"`
 		Debug   bool   `json:"debug,omitempty"`
+		Address string `json:"address,omitempty"`
 	} `json:"bittorrent,omitempty"`
 }
 
@@ -113,9 +114,13 @@ func (a Agent) Start(cfg AgentConfig) error {
 		},
 		//PeerID:        a.Overlay.ID.String(),
 	}
+	if len(cfg.BitTorrent.Address) > 0 {
+		torrentCfg.ListenAddr = cfg.BitTorrent.Address
+	}
 	if a.TorrentClient, err = torrent.NewClient(torrentCfg); err != nil {
 		return fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
 	}
+	log.Printf("Torrent Client listen at %v", a.TorrentClient.ListenAddr())
 
 	// start REST API service
 	go a.startRestAPI()
