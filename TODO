@@ -10,6 +10,7 @@
 [x] start bittorrent seeding to serve update file
 [?] start bittorrent download/seeding when it receives a new update notification
 [ ] deploy the update
+[ ] data directory must have a structure of 'data/<uuid>/<version>/<files>'
 
 
 Legends:
