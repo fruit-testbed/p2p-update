@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
+	"time"
+
+	"github.com/anacrolix/torrent"
 
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/spacemonkeygo/openssl"
@@ -21,9 +25,10 @@ const (
 )
 
 type Agent struct {
-	Config    AgentConfig
-	Overlay   *OverlayConn
-	PublicKey openssl.PublicKey
+	Config        AgentConfig
+	Overlay       *OverlayConn
+	PublicKey     openssl.PublicKey
+	TorrentClient *torrent.Client
 }
 
 type AgentConfig struct {
@@ -32,6 +37,9 @@ type AgentConfig struct {
 	Api           struct {
 		Address string `json:"address,omitempty"`
 	} `json:"api,omitempty"`
+	Data struct {
+		Dir string `json:"dir,omitempty"`
+	} `json:"data,omitempty"`
 }
 
 func (a *Agent) Start(cfg AgentConfig) error {
@@ -61,6 +69,17 @@ func (a *Agent) Start(cfg AgentConfig) error {
 	}
 	if a.PublicKey, err = openssl.LoadPublicKeyFromPEM(b); err != nil {
 		return fmt.Errorf("ERROR: failed loading public key file '%s: %v", cfg.PublicKeyFile, err)
+	}
+
+	// create Torrent Client
+	torrentCfg := &torrent.Config{
+		DataDir:       cfg.Data.Dir,
+		Seed:          true,
+		HTTPUserAgent: softwareName,
+		//PeerID:        a.Overlay.ID.String(),
+	}
+	if a.TorrentClient, err = torrent.NewClient(torrentCfg); err != nil {
+		return fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
 	}
 
 	// start REST API service
@@ -130,29 +149,23 @@ func (a *Agent) restRequestUpdate(ctx *fasthttp.RequestCtx) {
 func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 	var (
 		update Update
-		b      []byte
 		err    error
 	)
 
 	if err = json.Unmarshal(ctx.PostBody(), &update); err != nil {
 		log.Printf("failed to decode request update: %v", err)
 		ctx.Response.SetStatusCode(400)
-	} else if err = update.Torrent.Verify(a.PublicKey); err != nil {
-		log.Printf("invalid torrent-file: %v", err)
-		ctx.Response.SetStatusCode(406)
-	} else if err = update.validate(); err != nil {
+	} else if err = update.validate(&a.PublicKey); err != nil {
 		log.Printf("torrent and update file do not match: %v", err)
 		ctx.Response.SetStatusCode(406)
+	} else if err = update.Write(a.Overlay); err != nil {
+		log.Printf("failed to distribute the torrent-file: %v", err)
+		ctx.Response.SetStatusCode(500)
+	} else if err = update.start(a.TorrentClient); err != nil {
+		log.Printf("failed to activating the torrent: %v", err)
+		ctx.Response.SetStatusCode(503)
 	} else {
-		if b, err = bencode.EncodeBytes(update.Torrent); err != nil {
-			log.Printf("failed to generating bencode from torrent-file: %v", err)
-			ctx.Response.SetStatusCode(500)
-		} else if _, err = a.Overlay.Write(b); err != nil {
-			log.Printf("failed to distribute the torrent-file: %v", err)
-			ctx.Response.SetStatusCode(500)
-		} else {
-			ctx.Response.SetStatusCode(200)
-		}
+		ctx.Response.SetStatusCode(200)
 	}
 }
 
@@ -167,19 +180,82 @@ func (a *Agent) restRequestOverlayPeers(ctx *fasthttp.RequestCtx) {
 }
 
 type Update struct {
-	Torrent  Metainfo
-	Filename string
+	Metainfo Metainfo `json:"metainfo"`
+	Filename string   `json:"filename"`
+
+	torrent *torrent.Torrent `json:"-"`
 }
 
-func (u *Update) validate() error {
+func (u *Update) validate(key *openssl.PublicKey) error {
+	if err := u.Metainfo.Verify(*key); err != nil {
+		j, _ := json.Marshal(*u)
+		log.Println(string(j))
+		return fmt.Errorf("invalid torrent-file: %v", err)
+	}
 	info := metainfo.Info{
-		PieceLength: u.Torrent.InfoBytes.PieceLength,
+		PieceLength: u.Metainfo.InfoBytes.PieceLength,
 	}
 	if err := info.BuildFromFilePath(u.Filename); err != nil {
 		return fmt.Errorf("ERROR: failed to generate piece-hashes from '%s': %v", u.Filename, err)
 	}
-	if bytes.Compare(info.Pieces, u.Torrent.InfoBytes.Pieces) != 0 {
+	if bytes.Compare(info.Pieces, u.Metainfo.InfoBytes.Pieces) != 0 {
 		return fmt.Errorf("ERROR: piece-hashes of '%s' and torrent-file do not match", u.Filename)
 	}
 	return nil
+}
+
+func (u *Update) Write(w io.Writer) error {
+	var (
+		b   []byte
+		err error
+	)
+
+	if b, err = bencode.EncodeBytes(u.Metainfo); err != nil {
+		return fmt.Errorf("failed to generating bencode from Metainfo: %v", err)
+	}
+	_, err = w.Write(b)
+	return err
+}
+
+func (u *Update) start(c *torrent.Client) error {
+	var (
+		mi  *metainfo.MetaInfo
+		err error
+	)
+
+	if mi, err = u.Metainfo.torrentMetainfo(); err != nil {
+		return fmt.Errorf("failed generating torrent metainfo: %v", err)
+	} else if u.torrent, err = c.AddTorrent(mi); err != nil {
+		return fmt.Errorf("failed adding torrent: %v", err)
+	}
+	go func() {
+		for {
+			log.Println(u.String())
+			time.Sleep(2 * time.Second)
+		}
+	}()
+	return err
+}
+
+func (u *Update) stop(c *torrent.Client) error {
+	// TODO
+	return nil
+}
+
+func (u *Update) String() string {
+	var b bytes.Buffer
+	b.WriteString("uuid:")
+	b.WriteString(u.Metainfo.UUID)
+	b.WriteString(" version:")
+	b.WriteString(u.Metainfo.Version)
+	if u.torrent != nil {
+		b.WriteString(fmt.Sprintf(" completed/missing:%v/%v",
+			u.torrent.BytesCompleted(), u.torrent.BytesMissing()))
+		stats := u.torrent.Stats()
+		b.WriteString(
+			fmt.Sprintf(" seeding:%v peers(total/active):%v/%v read/write:%v/%v",
+				u.torrent.Seeding(), stats.TotalPeers, stats.ActivePeers,
+				stats.BytesRead, stats.BytesWritten))
+	}
+	return b.String()
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	tb "github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/spacemonkeygo/openssl"
 	"github.com/zeebo/bencode"
@@ -160,4 +161,19 @@ func (mi *Metainfo) Verify(key openssl.PublicKey) error {
 		return err
 	}
 	return fmt.Errorf("signature is not available")
+}
+
+func (m *Metainfo) torrentMetainfo() (*metainfo.MetaInfo, error) {
+	mi := metainfo.MetaInfo{
+		AnnounceList: m.AnnounceList,
+		Nodes:        m.Nodes,
+		CreationDate: m.CreationDate,
+		CreatedBy:    m.CreatedBy,
+		Encoding:     m.Encoding,
+	}
+	var err error
+	if mi.InfoBytes, err = tb.Marshal(m.InfoBytes); err != nil {
+		return nil, fmt.Errorf("failed encoding InfoBytes: %v", err)
+	}
+	return &mi, nil
 }

@@ -6,6 +6,6 @@
 [ ] gossip protocol over UDP multicast
     [x] send torrent-file from one to another peer
     [ ] multicast torrent-file
-[ ] invoke bittorrent upload to serve update file
-[ ] invoke bittorrent download when it receives a new update notification
+[x] start bittorrent seeding to serve update file
+[ ] start bittorrent download/seeding when it receives a new update notification
 [ ] deploy the update

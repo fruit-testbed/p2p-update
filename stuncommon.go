@@ -77,6 +77,7 @@ func (pid *PeerID) GetFrom(m *stun.Message) error {
 // and values are pairs of [external-addr, internal-addr].
 type SessionTable map[PeerID][]*net.UDPAddr
 
+// JSON marshals the SessionTable to JSON and then returns it.
 func (st *SessionTable) JSON() []byte {
 	var buf bytes.Buffer
 	buf.WriteByte('{')
@@ -99,7 +100,7 @@ func (st *SessionTable) JSON() []byte {
 			buf.WriteByte('"')
 		}
 		buf.WriteByte(']')
-		i += 1
+		i++
 	}
 	buf.WriteByte('}')
 	return buf.Bytes()

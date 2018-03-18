@@ -1,5 +1,8 @@
 {
   "public-key-file": "fruit-key.pub",
+  "data": {
+    "dir": "/Users/herry/workspace/fruit/p2p-update/data"
+  },
   "overlay": {
     "address": "192.168.0.5:9322",
     "server": "192.168.0.5:3478"
