@@ -36,7 +36,7 @@ func adminCmd(ctx *cli.Context) error {
 	mi, err = NewMetainfo(
 		ctx.String("file"),
 		ctx.String("uuid"),
-		ctx.String("version"),
+		ctx.Int("version"),
 		PublicAnnounceList,
 		DefaultPieceLength,
 		&privKey)
@@ -99,8 +99,7 @@ func agentCmd(ctx *cli.Context) error {
 	if err = json.NewDecoder(f).Decode(&cfg); err != nil {
 		return err
 	}
-	a := &Agent{}
-	return a.Start(cfg)
+	return Agent{}.Start(cfg)
 }
 
 func sendCmd(ctx *cli.Context) error {
@@ -146,7 +145,7 @@ func main() {
 					Name:  "file",
 					Usage: "Update file",
 				},
-				cli.StringFlag{
+				cli.IntFlag{
 					Name:  "version",
 					Usage: "Update version",
 				},

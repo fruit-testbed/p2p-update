@@ -9,9 +9,11 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 
 	"github.com/anacrolix/torrent"
+	"github.com/pkg/errors"
 
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/spacemonkeygo/openssl"
@@ -20,8 +22,9 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-const (
-	DefaultUnixAddress = "p2pupdate.sock"
+var (
+	errUpdateIsAlreadyExist = errors.New("update is already exist")
+	errUpdateIsOlder        = errors.New("update is older")
 )
 
 type Agent struct {
@@ -29,26 +32,31 @@ type Agent struct {
 	Overlay       *OverlayConn
 	PublicKey     openssl.PublicKey
 	TorrentClient *torrent.Client
+	Updates       map[string]*Update
 }
 
 type AgentConfig struct {
 	OverlayConfig OverlayConfig `json:"overlay,omitempty"`
 	PublicKeyFile string        `json:"public-key-file,omitempty"`
-	Api           struct {
+
+	API struct {
 		Address string `json:"address,omitempty"`
 	} `json:"api,omitempty"`
-	Data struct {
-		Dir string `json:"dir,omitempty"`
-	} `json:"data,omitempty"`
+
+	BitTorrent struct {
+		DataDir string `json:"data-dir,omitempty"`
+		DHT     bool   `json:"dht,omitempty"`
+	} `json:"bittorrent,omitempty"`
 }
 
-func (a *Agent) Start(cfg AgentConfig) error {
+func (a Agent) Start(cfg AgentConfig) error {
 	var (
 		b   []byte
 		err error
 	)
 
 	a.Config = cfg
+	a.Updates = make(map[string]*Update)
 
 	// catch SIGINT signal, then do the cleanup
 	c := make(chan os.Signal, 1)
@@ -63,6 +71,11 @@ func (a *Agent) Start(cfg AgentConfig) error {
 		}
 	}()
 
+	// start Overlay network
+	if a.Overlay, err = NewOverlayConn(a.Config.OverlayConfig); err != nil {
+		return err
+	}
+
 	// load public key file
 	if b, err = ioutil.ReadFile(cfg.PublicKeyFile); err != nil {
 		return fmt.Errorf("ERROR: failed reading public key file '%s': %v", cfg.PublicKeyFile, err)
@@ -73,9 +86,10 @@ func (a *Agent) Start(cfg AgentConfig) error {
 
 	// create Torrent Client
 	torrentCfg := &torrent.Config{
-		DataDir:       cfg.Data.Dir,
+		DataDir:       cfg.BitTorrent.DataDir,
 		Seed:          true,
 		HTTPUserAgent: softwareName,
+		NoDHT:         !cfg.BitTorrent.DHT,
 		//PeerID:        a.Overlay.ID.String(),
 	}
 	if a.TorrentClient, err = torrent.NewClient(torrentCfg); err != nil {
@@ -83,41 +97,56 @@ func (a *Agent) Start(cfg AgentConfig) error {
 	}
 
 	// start REST API service
-	go a.startRestApi()
+	go a.startRestAPI()
 
-	// start Overlay network
-	return a.startOverlay()
+	// start listening gossip message
+	a.listenGossip()
+	return nil
 }
 
-func (a *Agent) startOverlay() error {
+func (a *Agent) listenGossip() {
 	var (
+		n   int
 		buf [64 * 1024]byte
+		u   *Update
 		err error
 	)
-	if a.Overlay, err = NewOverlayConn(a.Config.OverlayConfig); err != nil {
-		return err
-	}
+
 	for {
-		if n, err := a.Overlay.Read(buf[:]); err != nil {
-			log.Println("failed reading from overlay", err)
+		if a != nil {
+			if n, err = a.Overlay.Read(buf[:]); err != nil {
+				log.Println("failed reading from overlay", err)
+			} else {
+				b := buf[:n]
+				log.Printf("read a message from overlay: %s", string(b))
+				if u, err = NewUpdateFromGossip(b); err != nil {
+					log.Printf("the gossip message is not an update: %v", err)
+				} else if err = u.start(a); err != nil {
+					switch err {
+					case errUpdateIsAlreadyExist, errUpdateIsOlder:
+						log.Printf("ignored the update: %v", err)
+					default:
+						log.Printf("failed adding the torrent-file++ to TorrentClient: %v", err)
+					}
+				} else {
+					log.Printf("INFO: New update has been started: %v", u.String())
+				}
+			}
 		} else {
-			log.Printf("read a message from overlay: %s", string(buf[:n]))
+			log.Println("WARNING: No overlay is available!")
+			time.Sleep(5 * time.Second)
 		}
 	}
 }
 
 func (a *Agent) cleanup() {
-	if _, err := os.Stat(a.Config.Api.Address); err == nil {
-		os.Remove(a.Config.Api.Address)
+	if _, err := os.Stat(a.Config.API.Address); err == nil {
+		os.Remove(a.Config.API.Address)
 	}
 }
 
-func (a *Agent) startRestApi() {
-	if a.Config.Api.Address == "" {
-		log.Printf("Using default unix address %s", DefaultUnixAddress)
-		a.Config.Api.Address = DefaultUnixAddress
-	}
-	if err := fasthttp.ListenAndServeUNIX(a.Config.Api.Address, 0600, a.restRequestHandler); err != nil {
+func (a *Agent) startRestAPI() {
+	if err := fasthttp.ListenAndServeUNIX(a.Config.API.Address, 0600, a.restRequestHandler); err != nil {
 		log.Fatalf("Error in startRestApi: %v", err)
 	}
 }
@@ -157,13 +186,20 @@ func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 		ctx.Response.SetStatusCode(400)
 	} else if err = update.validate(&a.PublicKey); err != nil {
 		log.Printf("torrent and update file do not match: %v", err)
-		ctx.Response.SetStatusCode(406)
+		ctx.Response.SetStatusCode(401)
 	} else if err = update.Write(a.Overlay); err != nil {
 		log.Printf("failed to distribute the torrent-file: %v", err)
 		ctx.Response.SetStatusCode(500)
-	} else if err = update.start(a.TorrentClient); err != nil {
+	} else if err = update.start(a); err != nil {
+		switch err {
+		case errUpdateIsAlreadyExist:
+			ctx.Response.SetStatusCode(208)
+		case errUpdateIsOlder:
+			ctx.Response.SetStatusCode(406)
+		default:
+			ctx.Response.SetStatusCode(503)
+		}
 		log.Printf("failed to activating the torrent: %v", err)
-		ctx.Response.SetStatusCode(503)
 	} else {
 		ctx.Response.SetStatusCode(200)
 	}
@@ -180,16 +216,23 @@ func (a *Agent) restRequestOverlayPeers(ctx *fasthttp.RequestCtx) {
 }
 
 type Update struct {
+	sync.RWMutex
+
 	Metainfo Metainfo `json:"metainfo"`
 	Filename string   `json:"filename"`
 
-	torrent *torrent.Torrent `json:"-"`
+	torrent *torrent.Torrent
+	stopped bool
+}
+
+func NewUpdateFromGossip(b []byte) (*Update, error) {
+	u := Update{}
+	err := bencode.DecodeBytes(b, u.Metainfo)
+	return &u, err
 }
 
 func (u *Update) validate(key *openssl.PublicKey) error {
 	if err := u.Metainfo.Verify(*key); err != nil {
-		j, _ := json.Marshal(*u)
-		log.Println(string(j))
 		return fmt.Errorf("invalid torrent-file: %v", err)
 	}
 	info := metainfo.Info{
@@ -217,37 +260,70 @@ func (u *Update) Write(w io.Writer) error {
 	return err
 }
 
-func (u *Update) start(c *torrent.Client) error {
+func (u *Update) start(a *Agent) error {
 	var (
 		mi  *metainfo.MetaInfo
 		err error
 	)
 
+	log.Printf("starting update: %s", u.String())
+
 	if mi, err = u.Metainfo.torrentMetainfo(); err != nil {
 		return fmt.Errorf("failed generating torrent metainfo: %v", err)
-	} else if u.torrent, err = c.AddTorrent(mi); err != nil {
+	}
+
+	// Remove existing update that has the same UUID. If the existing update
+	// is newer, then return an error.
+	if cu, ok := a.Updates[u.Metainfo.UUID]; ok {
+		if cu.Metainfo.Version > u.Metainfo.Version {
+			return errUpdateIsOlder
+		} else if cu.Metainfo.Version == u.Metainfo.Version {
+			return errUpdateIsAlreadyExist
+		}
+		cu.stop()
+	} else {
+		log.Printf("existing update of uuid:%s does not exist", u.Metainfo.UUID)
+	}
+	a.Updates[u.Metainfo.UUID] = u
+
+	if u.torrent, err = a.TorrentClient.AddTorrent(mi); err != nil {
 		return fmt.Errorf("failed adding torrent: %v", err)
 	}
+
+	u.Lock()
+	u.stopped = false
+	u.Unlock()
 	go func() {
 		for {
+			u.RLock()
+			stopped := u.stopped
+			u.RUnlock()
+			if stopped {
+				break
+			}
 			log.Println(u.String())
-			time.Sleep(2 * time.Second)
+			time.Sleep(5 * time.Second)
 		}
 	}()
+
 	return err
 }
 
-func (u *Update) stop(c *torrent.Client) error {
-	// TODO
-	return nil
+func (u *Update) stop() {
+	if u.torrent != nil {
+		log.Printf("stopping torrent: %v", u.String())
+		u.torrent.Drop()
+		<-u.torrent.Closed()
+		u.Lock()
+		u.stopped = true
+		u.Unlock()
+		log.Printf("closed torrent: %v", u.String())
+	}
 }
 
 func (u *Update) String() string {
 	var b bytes.Buffer
-	b.WriteString("uuid:")
-	b.WriteString(u.Metainfo.UUID)
-	b.WriteString(" version:")
-	b.WriteString(u.Metainfo.Version)
+	b.WriteString(fmt.Sprintf("uuid:%v version:%d", u.Metainfo.UUID, u.Metainfo.Version))
 	if u.torrent != nil {
 		b.WriteString(fmt.Sprintf(" completed/missing:%v/%v",
 			u.torrent.BytesCompleted(), u.torrent.BytesMissing()))

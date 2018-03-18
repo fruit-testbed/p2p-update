@@ -14,4 +14,4 @@
 /fruit-key.pub
 
 # Example REST API Post data
-/update.json
+/update*.json

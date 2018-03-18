@@ -45,7 +45,7 @@ type Metainfo struct {
 
 	// Fields proposed by Herry et.al.
 	UUID    string `bencode:"uuid,omitempty"`
-	Version string `bencode:"version,omitempty"`
+	Version int    `bencode:"version,omitempty"`
 }
 
 // Signature holds data signature
@@ -57,7 +57,7 @@ type Signature struct {
 }
 
 // NewMetainfo creates a new Metainfo instance (torrent file) of given 'filePath'.
-func NewMetainfo(filename, uuid, ver string, trackers [][]string,
+func NewMetainfo(filename, uuid string, ver int, trackers [][]string,
 	pieceLength int64, privkey *openssl.PrivateKey) (*Metainfo, error) {
 	mi := Metainfo{
 		UUID:         uuid,

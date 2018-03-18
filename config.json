@@ -1,7 +1,11 @@
 {
   "public-key-file": "fruit-key.pub",
-  "data": {
-    "dir": "/Users/herry/workspace/fruit/p2p-update/data"
+  "bittorrent": {
+    "data-dir": "data/",
+    "dht": false
+  },
+  "api": {
+    "address": "p2pupdate.sock"
   },
   "overlay": {
     "address": "192.168.0.5:9322",
