@@ -184,7 +184,7 @@ func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 	if err = json.Unmarshal(ctx.PostBody(), &update); err != nil {
 		log.Printf("failed to decode request update: %v", err)
 		ctx.Response.SetStatusCode(400)
-	} else if err = update.validate(&a.PublicKey); err != nil {
+	} else if err = update.validate(a); err != nil {
 		log.Printf("torrent and update file do not match: %v", err)
 		ctx.Response.SetStatusCode(401)
 	} else if err = update.start(a); err != nil {
@@ -224,22 +224,23 @@ type Update struct {
 
 func NewUpdateFromGossip(b []byte) (*Update, error) {
 	u := Update{}
-	err := bencode.DecodeBytes(b, u.Metainfo)
+	err := bencode.DecodeBytes(b, &u.Metainfo)
 	return &u, err
 }
 
-func (u *Update) validate(key *openssl.PublicKey) error {
-	if err := u.Metainfo.Verify(*key); err != nil {
+func (u *Update) validate(a *Agent) error {
+	if err := u.Metainfo.Verify(a.PublicKey); err != nil {
 		return fmt.Errorf("invalid torrent-file: %v", err)
 	}
 	info := metainfo.Info{
 		PieceLength: u.Metainfo.InfoBytes.PieceLength,
 	}
-	if err := info.BuildFromFilePath(u.Filename); err != nil {
-		return fmt.Errorf("ERROR: failed to generate piece-hashes from '%s': %v", u.Filename, err)
+	filename := fmt.Sprintf("%s/%s", a.Config.BitTorrent.DataDir, u.Filename)
+	if err := info.BuildFromFilePath(filename); err != nil {
+		return fmt.Errorf("ERROR: failed to generate piece-hashes from '%s': %v", filename, err)
 	}
 	if bytes.Compare(info.Pieces, u.Metainfo.InfoBytes.Pieces) != 0 {
-		return fmt.Errorf("ERROR: piece-hashes of '%s' and torrent-file do not match", u.Filename)
+		return fmt.Errorf("ERROR: piece-hashes of '%s' and torrent-file do not match", filename)
 	}
 	return nil
 }
