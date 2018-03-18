@@ -187,9 +187,6 @@ func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 	} else if err = update.validate(&a.PublicKey); err != nil {
 		log.Printf("torrent and update file do not match: %v", err)
 		ctx.Response.SetStatusCode(401)
-	} else if err = update.Write(a.Overlay); err != nil {
-		log.Printf("failed to distribute the torrent-file: %v", err)
-		ctx.Response.SetStatusCode(500)
 	} else if err = update.start(a); err != nil {
 		switch err {
 		case errUpdateIsAlreadyExist:
@@ -197,7 +194,7 @@ func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 		case errUpdateIsOlder:
 			ctx.Response.SetStatusCode(406)
 		default:
-			ctx.Response.SetStatusCode(503)
+			ctx.Response.SetStatusCode(500)
 		}
 		log.Printf("failed to activating the torrent: %v", err)
 	} else {
@@ -286,13 +283,15 @@ func (u *Update) start(a *Agent) error {
 	}
 	a.Updates[u.Metainfo.UUID] = u
 
+	// activate torrent
 	if u.torrent, err = a.TorrentClient.AddTorrent(mi); err != nil {
 		return fmt.Errorf("failed adding torrent: %v", err)
 	}
-
 	u.Lock()
 	u.stopped = false
 	u.Unlock()
+
+	// spawn a go-routine that logs torrent's stats
 	go func() {
 		for {
 			u.RLock()
@@ -305,6 +304,11 @@ func (u *Update) start(a *Agent) error {
 			time.Sleep(5 * time.Second)
 		}
 	}()
+
+	// re-distribute the update to peers
+	if err = u.Write(a.Overlay); err != nil {
+		log.Printf("WARNING: failed to multicast update:[%v]: %v", u.String(), err)
+	}
 
 	return err
 }
@@ -334,4 +338,9 @@ func (u *Update) String() string {
 				stats.BytesRead, stats.BytesWritten))
 	}
 	return b.String()
+}
+
+func (u *Update) Deploy() error {
+	// TODO
+	return nil
 }
