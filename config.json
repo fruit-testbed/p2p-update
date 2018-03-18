@@ -3,11 +3,7 @@
   "bittorrent": {
     "data-dir": "data/",
     "dht": false,
-    "trackers": [
-      "http://fruit-testbed.org:6881",
-      "http://0d.kebhana.mx:443/announce",
-      "http://torrentsmd.me:8080/announce"
-    ]
+    "tracker": "http://0d.kebhana.mx:443/announce"
   },
   "api": {
     "address": "p2pupdate.sock"

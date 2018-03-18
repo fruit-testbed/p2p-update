@@ -38,16 +38,12 @@ func adminCmd(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	trackers := make([][]string, len(cfg.BitTorrent.Trackers))
-	for i, t := range cfg.BitTorrent.Trackers {
-		trackers[i] = []string{t}
-	}
 
 	mi, err = NewMetainfo(
 		ctx.String("file"),
 		ctx.String("uuid"),
 		ctx.Int("version"),
-		trackers,
+		cfg.BitTorrent.Tracker,
 		DefaultPieceLength,
 		&privKey)
 	if err != nil {

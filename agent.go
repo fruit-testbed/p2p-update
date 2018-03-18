@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/anacrolix/dht"
+
 	"github.com/anacrolix/torrent"
 	"github.com/pkg/errors"
 
@@ -44,9 +46,10 @@ type AgentConfig struct {
 	} `json:"api,omitempty"`
 
 	BitTorrent struct {
-		DataDir  string   `json:"data-dir,omitempty"`
-		DHT      bool     `json:"dht,omitempty"`
-		Trackers []string `json:"trackers,omitempty"`
+		DataDir string `json:"data-dir,omitempty"`
+		DHT     bool   `json:"dht,omitempty"`
+		Tracker string `json:"tracker,omitempty"`
+		Debug   bool   `json:"debug,omitempty"`
 	} `json:"bittorrent,omitempty"`
 }
 
@@ -104,6 +107,10 @@ func (a Agent) Start(cfg AgentConfig) error {
 		Seed:          true,
 		HTTPUserAgent: softwareName,
 		NoDHT:         !cfg.BitTorrent.DHT,
+		Debug:         cfg.BitTorrent.Debug,
+		DHTConfig: dht.ServerConfig{
+			StartingNodes: dht.GlobalBootstrapAddrs,
+		},
 		//PeerID:        a.Overlay.ID.String(),
 	}
 	if a.TorrentClient, err = torrent.NewClient(torrentCfg); err != nil {
@@ -198,7 +205,7 @@ func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 	if err = json.Unmarshal(ctx.PostBody(), &update); err != nil {
 		log.Printf("failed to decode request update: %v", err)
 		ctx.Response.SetStatusCode(400)
-	} else if err = update.validate(a); err != nil {
+	} else if err = update.Validate(a); err != nil {
 		log.Printf("torrent and update file do not match: %v", err)
 		ctx.Response.SetStatusCode(401)
 	} else if err = update.start(a); err != nil {
@@ -242,21 +249,8 @@ func NewUpdateFromGossip(b []byte) (*Update, error) {
 	return &u, err
 }
 
-func (u *Update) validate(a *Agent) error {
-	if err := u.Metainfo.Verify(a.PublicKey); err != nil {
-		return fmt.Errorf("invalid torrent-file: %v", err)
-	}
-	info := metainfo.Info{
-		PieceLength: u.Metainfo.InfoBytes.PieceLength,
-	}
-	filename := fmt.Sprintf("%s/%s", a.Config.BitTorrent.DataDir, u.Filename)
-	if err := info.BuildFromFilePath(filename); err != nil {
-		return fmt.Errorf("ERROR: failed to generate piece-hashes from '%s': %v", filename, err)
-	}
-	if bytes.Compare(info.Pieces, u.Metainfo.InfoBytes.Pieces) != 0 {
-		return fmt.Errorf("ERROR: piece-hashes of '%s' and torrent-file do not match", filename)
-	}
-	return nil
+func (u *Update) Validate(a *Agent) error {
+	return u.Metainfo.Verify(a.PublicKey)
 }
 
 func (u *Update) Write(w io.Writer) error {
@@ -278,12 +272,6 @@ func (u *Update) start(a *Agent) error {
 		err error
 	)
 
-	log.Printf("starting update: %s", u.String())
-
-	if mi, err = u.Metainfo.torrentMetainfo(); err != nil {
-		return fmt.Errorf("failed generating torrent metainfo: %v", err)
-	}
-
 	// Remove existing update that has the same UUID. If the existing update
 	// is newer, then return an error.
 	if cu, ok := a.Updates[u.Metainfo.UUID]; ok {
@@ -299,6 +287,10 @@ func (u *Update) start(a *Agent) error {
 	a.Updates[u.Metainfo.UUID] = u
 
 	// activate torrent
+	log.Printf("starting update: %s", u.String())
+	if mi, err = u.Metainfo.torrentMetainfo(); err != nil {
+		return fmt.Errorf("failed generating torrent metainfo: %v", err)
+	}
 	if u.torrent, err = a.TorrentClient.AddTorrent(mi); err != nil {
 		return fmt.Errorf("failed adding torrent: %v", err)
 	}
@@ -314,6 +306,10 @@ func (u *Update) start(a *Agent) error {
 			u.RUnlock()
 			if stopped {
 				break
+			}
+			if u.torrent.BytesMissing() > 0 {
+				<-u.torrent.GotInfo()
+				u.torrent.DownloadAll()
 			}
 			log.Println(u.String())
 			time.Sleep(5 * time.Second)
@@ -351,6 +347,10 @@ func (u *Update) String() string {
 			fmt.Sprintf(" seeding:%v peers(total/active):%v/%v read/write:%v/%v",
 				u.torrent.Seeding(), stats.TotalPeers, stats.ActivePeers,
 				stats.BytesRead, stats.BytesWritten))
+		s := u.torrent.PieceState(0)
+		b.WriteString(
+			fmt.Sprintf(" piece[0]checking:%v complete:%v ok:%v partial:%v priority:%v",
+				s.Checking, s.Complete, s.Ok, s.Partial, s.Priority))
 	}
 	return b.String()
 }

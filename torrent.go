@@ -32,12 +32,12 @@ var (
 // Metainfo holds data of torrent file
 type Metainfo struct {
 	// Fields from standard BitTorrent protocol
-	InfoBytes    metainfo.Info         `bencode:"info,omitempty"`
-	AnnounceList metainfo.AnnounceList `bencode:"announce-list,omitempty"`
-	Nodes        []metainfo.Node       `bencode:"nodes,omitempty"`
-	CreationDate int64                 `bencode:"creation date,omitempty,ignore_unmarshal_type_error"`
-	CreatedBy    string                `bencode:"created by,omitempty"`
-	Encoding     string                `bencode:"encoding,omitempty"`
+	InfoBytes    metainfo.Info   `bencode:"info,omitempty"`
+	Announce     string          `bencode:"announce,omitempty"`
+	Nodes        []metainfo.Node `bencode:"nodes,omitempty"`
+	CreationDate int64           `bencode:"creation date,omitempty,ignore_unmarshal_type_error"`
+	CreatedBy    string          `bencode:"created by,omitempty"`
+	Encoding     string          `bencode:"encoding,omitempty"`
 
 	// Field from BitTorrent signing proposal
 	// Reference: http://www.bittorrent.org/beps/bep_0035.html
@@ -57,12 +57,12 @@ type Signature struct {
 }
 
 // NewMetainfo creates a new Metainfo instance (torrent file) of given 'filePath'.
-func NewMetainfo(filename, uuid string, ver int, trackers [][]string,
+func NewMetainfo(filename, uuid string, ver int, tracker string,
 	pieceLength int64, privkey *openssl.PrivateKey) (*Metainfo, error) {
 	mi := Metainfo{
 		UUID:         uuid,
 		Version:      ver,
-		AnnounceList: trackers,
+		Announce:     tracker,
 		CreatedBy:    softwareName,
 		Encoding:     "UTF-8",
 		CreationDate: time.Now().Unix(),
@@ -165,7 +165,7 @@ func (mi *Metainfo) Verify(key openssl.PublicKey) error {
 
 func (m *Metainfo) torrentMetainfo() (*metainfo.MetaInfo, error) {
 	mi := metainfo.MetaInfo{
-		AnnounceList: m.AnnounceList,
+		Announce:     m.Announce,
 		Nodes:        m.Nodes,
 		CreationDate: m.CreationDate,
 		CreatedBy:    m.CreatedBy,
