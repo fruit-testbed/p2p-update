@@ -107,12 +107,10 @@ func (a Agent) Start(cfg AgentConfig) error {
 		DataDir:       cfg.BitTorrent.DataDir,
 		Seed:          true,
 		HTTPUserAgent: softwareName,
-		NoDHT:         !cfg.BitTorrent.DHT,
 		Debug:         cfg.BitTorrent.Debug,
 		DHTConfig: dht.ServerConfig{
 			StartingNodes: dht.GlobalBootstrapAddrs,
 		},
-		//PeerID:        a.Overlay.ID.String(),
 	}
 	if len(cfg.BitTorrent.Address) > 0 {
 		torrentCfg.ListenAddr = cfg.BitTorrent.Address
@@ -221,8 +219,8 @@ func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 			ctx.Response.SetStatusCode(406)
 		default:
 			ctx.Response.SetStatusCode(500)
+			log.Printf("failed to activating the torrent: %v", err)
 		}
-		log.Printf("failed to activating the torrent: %v", err)
 	} else {
 		ctx.Response.SetStatusCode(200)
 	}
@@ -326,7 +324,7 @@ func (u *Update) start(a *Agent) error {
 		log.Printf("WARNING: failed to multicast update:[%v]: %v", u.String(), err)
 	}
 
-	return err
+	return nil
 }
 
 func (u *Update) stop() {
