@@ -13,6 +13,26 @@ The framework combines several key techniques:
 This project is part of Federated RaspberryPi micro-Infrastructure Testbed - [FRuIT](https://fruit-testbed.org).
 
 
+Requirements to compile:
+- Go version >=1.9
+- Go libraries:
+  - github.com/vmihailenco/msgpack
+  - github.com/spacemonkeygo/openssl
+  - gopkg.in/urfave/cli.v1
+  - github.com/anacrolix/torrent
+  - github.com/valyala/fasthttp
+  - github.com/zeebo/bencode
+
+
+Requirements to run on FruitOS/Alpine Linux:
+- musl
+- libstdc++
+- libcrypto1.0
+- libssl1.0
+- libgcc
+- zlib
+
+
 - To run the STUN server
 
     ```
