@@ -9,12 +9,13 @@
     [x] re-multicast newer torrent-file
 [x] start bittorrent seeding to serve update file
 [x] start bittorrent download/seeding when it receives a new update notification
-[ ] deploy the update
+[ ] implement the state machine of update lifecycle
 [ ] data directory must have a structure of 'data/<uuid>/<version>/<files>'
     [ ] delete older version
 [ ] probe available port at NAT router before starting torrent client
     - see https://github.com/anacrolix/torrent/blob/5a7c4fc135eda0996079a46b43bc0ee8116d7093/portfwd.go#L12
     - the port can be picked randomly
+[ ] implement fallback to TCP when UDP does not work e.g. DCS firewall
 
 
 Legends:
