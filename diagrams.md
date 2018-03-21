@@ -42,3 +42,24 @@ Peer1->Peer2: TID,DataPost,Sequence:7,SequencePayload
 Peer2-->Peer1: TID,DataSuccess
 ```
 
+
+
+## Update Lifecycle
+
+```mermaid
+graph TD;
+	created -->|download| downloading;
+	created -->|delete| deleted;
+	downloading -->|success| downloaded;
+	downloading -->|error| downloading;
+	downloading -->|stop| created;
+	downloaded -->|deploy| deploying;
+	downloaded -->|delete| deleted;
+	deploying -->|success| deployed;
+	deploying -->|error| deployError;
+	deploying -->|stop| downloaded;
+	deployError -->|underLimit| deploying;
+	deployError -->|overLimit| downloaded;
+	deployed -->|delete| deleted;
+	deleted -->|create| created;
+```
