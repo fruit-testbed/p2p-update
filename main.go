@@ -21,8 +21,7 @@ func adminCmd(ctx *cli.Context) error {
 	var (
 		mi      *Metainfo
 		content []byte
-		privKey openssl.PrivateKey
-		pubKey  openssl.PublicKey
+		key     openssl.PrivateKey
 		cfg     Config
 		err     error
 	)
@@ -30,7 +29,7 @@ func adminCmd(ctx *cli.Context) error {
 	if content, err = ioutil.ReadFile(ctx.String("private-key")); err != nil {
 		return err
 	}
-	if privKey, err = openssl.LoadPrivateKeyFromPEM(content); err != nil {
+	if key, err = openssl.LoadPrivateKeyFromPEM(content); err != nil {
 		return err
 	}
 
@@ -44,31 +43,27 @@ func adminCmd(ctx *cli.Context) error {
 		ctx.String("uuid"),
 		ctx.Int("version"),
 		cfg.BitTorrent.Tracker,
-		DefaultPieceLength,
-		&privKey)
+		cfg.BitTorrent.PieceLength,
+		&key)
 	if err != nil {
 		return err
 	}
-	if err = mi.WriteToFile("foo.torrent"); err != nil {
-		return err
-	}
-	j1, _ := json.Marshal(*mi)
-	log.Println(string(j1))
 
-	if mi, err = LoadMetainfoFromFile("foo.torrent"); err != nil {
-		return err
+	w := os.Stdout
+	filename := ctx.String("output")
+	if filename != "" {
+		f, err := os.OpenFile(filename,
+			os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		w = f
 	}
-	j2, _ := json.Marshal(*mi)
-	log.Println(string(j2))
-	if content, err = ioutil.ReadFile(fmt.Sprintf("%s.pub", ctx.String("private-key"))); err != nil {
-		return err
+	if !ctx.Bool("json") {
+		return mi.Write(w)
 	}
-	if pubKey, err = openssl.LoadPublicKeyFromPEM(content); err != nil {
-		return err
-	}
-	err = mi.Verify(pubKey)
-	log.Printf("verification error: %v", err)
-	return err
+	return json.NewEncoder(w).Encode(mi)
 }
 
 func serverCmd(ctx *cli.Context) error {
@@ -138,7 +133,7 @@ func main() {
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "config-file",
-			Value: "",
+			Value: "config.json",
 			Usage: "Path of config file",
 		},
 	}
@@ -163,6 +158,14 @@ func main() {
 				cli.StringFlag{
 					Name:  "private-key",
 					Usage: "Private key for signing",
+				},
+				cli.StringFlag{
+					Name:  "output",
+					Usage: "output torrent file",
+				},
+				cli.BoolFlag{
+					Name:  "json",
+					Usage: "use JSON instead of Bencode",
 				},
 			},
 		},
