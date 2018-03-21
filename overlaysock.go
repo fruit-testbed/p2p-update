@@ -191,28 +191,6 @@ const (
 	defaultChannelLifespan     = 60 * time.Second
 )
 
-const (
-	stateClosed = iota
-	stateOpening
-	stateOpened
-	stateBinding
-	stateBindError
-	stateListening
-	stateProcessingMessage
-	stateMessageError
-)
-
-const (
-	eventOpen = iota + 100
-	eventClose
-	eventBind
-	eventSuccess
-	eventError
-	eventUnderLimit
-	eventOverLimit
-	eventChannelExpired
-)
-
 func (overlay *OverlayConn) createAutomata() {
 	overlay.automata = NewAutomata(
 		stateClosed,
