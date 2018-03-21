@@ -93,11 +93,20 @@ func serverCmd(ctx *cli.Context) error {
 }
 
 func agentCmd(ctx *cli.Context) error {
-	cfg, err := NewConfig(ctx.GlobalString("config-file"))
-	if err != nil {
+	var (
+		a   *Agent
+		cfg Config
+		err error
+	)
+
+	if cfg, err = NewConfig(ctx.GlobalString("config-file")); err != nil {
+		return err
+	} else if a, err = NewAgent(cfg); err != nil {
 		return err
 	}
-	return Agent{}.Start(cfg)
+	a.Wait()
+	log.Println("agent has been shutdown")
+	return nil
 }
 
 func sendCmd(ctx *cli.Context) error {

@@ -30,11 +30,13 @@ var (
 )
 
 type Agent struct {
-	Config        Config
-	Overlay       *OverlayConn
-	PublicKey     openssl.PublicKey
-	TorrentClient *torrent.Client
-	Updates       map[string]*Update
+	Config    *Config
+	Overlay   *OverlayConn
+	PublicKey *openssl.PublicKey
+	Updates   map[string]*Update
+
+	torrentClient *torrent.Client
+	quit          chan interface{}
 }
 
 type Config struct {
@@ -67,40 +69,32 @@ func NewConfig(filename string) (Config, error) {
 	return cfg, err
 }
 
-func (a Agent) Start(cfg Config) error {
+func NewAgent(cfg Config) (*Agent, error) {
 	var (
 		b   []byte
+		pub openssl.PublicKey
 		err error
 	)
 
-	a.Config = cfg
-	a.Updates = make(map[string]*Update)
-
-	// catch SIGINT signal, then do the cleanup
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		for {
-			switch <-c {
-			case os.Interrupt, os.Kill:
-				a.cleanup()
-				os.Exit(0)
-			}
-		}
-	}()
+	a := &Agent{
+		Config:  &cfg,
+		Updates: make(map[string]*Update),
+		quit:    make(chan interface{}),
+	}
 
 	// start Overlay network
 	if a.Overlay, err = NewOverlayConn(a.Config.OverlayConfig); err != nil {
-		return err
+		return nil, err
 	}
 
 	// load public key file
 	if b, err = ioutil.ReadFile(cfg.PublicKeyFile); err != nil {
-		return fmt.Errorf("ERROR: failed reading public key file '%s': %v", cfg.PublicKeyFile, err)
+		return nil, fmt.Errorf("ERROR: failed reading public key file '%s': %v", cfg.PublicKeyFile, err)
 	}
-	if a.PublicKey, err = openssl.LoadPublicKeyFromPEM(b); err != nil {
-		return fmt.Errorf("ERROR: failed loading public key file '%s: %v", cfg.PublicKeyFile, err)
+	if pub, err = openssl.LoadPublicKeyFromPEM(b); err != nil {
+		return nil, fmt.Errorf("ERROR: failed loading public key file '%s: %v", cfg.PublicKeyFile, err)
 	}
+	a.PublicKey = &pub
 
 	// create Torrent Client
 	torrentCfg := &torrent.Config{
@@ -115,20 +109,38 @@ func (a Agent) Start(cfg Config) error {
 	if len(cfg.BitTorrent.Address) > 0 {
 		torrentCfg.ListenAddr = cfg.BitTorrent.Address
 	}
-	if a.TorrentClient, err = torrent.NewClient(torrentCfg); err != nil {
-		return fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
+	if a.torrentClient, err = torrent.NewClient(torrentCfg); err != nil {
+		return nil, fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
 	}
-	log.Printf("Torrent Client listen at %v", a.TorrentClient.ListenAddr())
+	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddr())
 
-	// start REST API service
+	go a.startCatchingSignals()
 	go a.startRestAPI()
+	go a.startGossip()
 
-	// start listening gossip message
-	a.listenGossip()
-	return nil
+	return a, nil
 }
 
-func (a *Agent) listenGossip() {
+func (a *Agent) Wait() {
+	select {
+	case <-a.quit:
+	}
+}
+
+func (a *Agent) startCatchingSignals() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	for {
+		switch <-c {
+		// catch SIGINT & Ctrl-C signal, then do the cleanup
+		case os.Interrupt, os.Kill:
+			a.Stop()
+			a.quit <- 1
+		}
+	}
+}
+
+func (a *Agent) startGossip() {
 	var (
 		n   int
 		buf [64 * 1024]byte
@@ -163,10 +175,12 @@ func (a *Agent) listenGossip() {
 	}
 }
 
-func (a *Agent) cleanup() {
+func (a *Agent) Stop() {
+	log.Println("cleaning up agent")
 	if _, err := os.Stat(a.Config.API.Address); err == nil {
 		os.Remove(a.Config.API.Address)
 	}
+	log.Println("cleaned up agent")
 }
 
 func (a *Agent) startRestAPI() {
@@ -253,7 +267,7 @@ func NewUpdateFromGossip(b []byte) (*Update, error) {
 }
 
 func (u *Update) Validate(a *Agent) error {
-	return u.Metainfo.Verify(a.PublicKey)
+	return u.Metainfo.Verify(*a.PublicKey)
 }
 
 func (u *Update) Write(w io.Writer) error {
@@ -294,7 +308,7 @@ func (u *Update) start(a *Agent) error {
 	if mi, err = u.Metainfo.torrentMetainfo(); err != nil {
 		return fmt.Errorf("failed generating torrent metainfo: %v", err)
 	}
-	if u.torrent, err = a.TorrentClient.AddTorrent(mi); err != nil {
+	if u.torrent, err = a.torrentClient.AddTorrent(mi); err != nil {
 		return fmt.Errorf("failed adding torrent: %v", err)
 	}
 	u.Lock()
