@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	tb "github.com/anacrolix/torrent/bencode"
+	torrentbencode "github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
 	"github.com/spacemonkeygo/openssl"
 	"github.com/zeebo/bencode"
@@ -15,18 +15,6 @@ import (
 const (
 	signatureName = "org.fruit-testbed"
 	softwareName  = "fruit/p2pupdate"
-
-	// DefaultPieceLength holds the default length of file-piece
-	DefaultPieceLength = 32 * 1024
-)
-
-var (
-// PublicAnnounceList contains a list of public BitTorrent trackers
-/*PublicAnnounceList = [][]string{
-	{"udp://tracker.openbittorrent.com:80"},
-	{"udp://tracker.publicbt.com:80"},
-	{"udp://tracker.istole.it:6969"},
-}*/
 )
 
 // Metainfo holds data of torrent file
@@ -43,7 +31,7 @@ type Metainfo struct {
 	// Reference: http://www.bittorrent.org/beps/bep_0035.html
 	Signatures map[string]Signature `bencode:"signatures,omitempty"`
 
-	// Fields proposed by Herry et.al.
+	// Fields proposed by Herry et.al. (see DOMINO workshop paper)
 	UUID    string `bencode:"uuid,omitempty"`
 	Version int    `bencode:"version,omitempty"`
 }
@@ -80,8 +68,8 @@ func NewMetainfo(filename, uuid string, ver int, tracker string,
 	return &mi, nil
 }
 
-// LoadMetainfo reads the Metainfo from given Reader.
-func LoadMetainfo(r io.Reader) (*Metainfo, error) {
+// ReadMetainfo reads the Metainfo from given Reader.
+func ReadMetainfo(r io.Reader) (*Metainfo, error) {
 	var mi Metainfo
 	return &mi, bencode.NewDecoder(r).Decode(&mi)
 }
@@ -98,26 +86,21 @@ func LoadMetainfoFromFile(filename string) (*Metainfo, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return LoadMetainfo(f)
+	return ReadMetainfo(f)
 }
 
 // Write writes the Metainfo to given Writer
 func (mi *Metainfo) Write(w io.Writer) error {
-	return bencode.NewEncoder(w).Encode(*mi)
-}
-
-// WriteToFile writes the Metainfo to given filename
-func (mi *Metainfo) WriteToFile(filename string) error {
 	var (
-		f   *os.File
+		b   []byte
 		err error
 	)
 
-	if f, err = os.OpenFile(filename, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644); err != nil {
-		return err
+	if b, err = bencode.EncodeBytes(*mi); err != nil {
+		return fmt.Errorf("failed to generating bencode from Metainfo: %v", err)
 	}
-	defer f.Close()
-	return mi.Write(f)
+	_, err = w.Write(b)
+	return err
 }
 
 // Sign signs the Metainfo using given private key file.
@@ -163,17 +146,18 @@ func (mi *Metainfo) Verify(key openssl.PublicKey) error {
 	return fmt.Errorf("signature is not available")
 }
 
-func (m *Metainfo) torrentMetainfo() (*metainfo.MetaInfo, error) {
-	mi := metainfo.MetaInfo{
-		Announce:     m.Announce,
-		Nodes:        m.Nodes,
-		CreationDate: m.CreationDate,
-		CreatedBy:    m.CreatedBy,
-		Encoding:     m.Encoding,
+// torrentMetainfo returns the anacrolix's torrent Metainfo.
+func (mi *Metainfo) torrentMetainfo() (*metainfo.MetaInfo, error) {
+	mm := metainfo.MetaInfo{
+		Announce:     mi.Announce,
+		Nodes:        mi.Nodes,
+		CreationDate: mi.CreationDate,
+		CreatedBy:    mi.CreatedBy,
+		Encoding:     mi.Encoding,
 	}
 	var err error
-	if mi.InfoBytes, err = tb.Marshal(m.InfoBytes); err != nil {
+	if mm.InfoBytes, err = torrentbencode.Marshal(mi.InfoBytes); err != nil {
 		return nil, fmt.Errorf("failed encoding InfoBytes: %v", err)
 	}
-	return &mi, nil
+	return &mm, nil
 }
