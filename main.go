@@ -23,7 +23,7 @@ func adminCmd(ctx *cli.Context) error {
 		content []byte
 		privKey openssl.PrivateKey
 		pubKey  openssl.PublicKey
-		cfg     AgentConfig
+		cfg     Config
 		err     error
 	)
 
@@ -34,7 +34,7 @@ func adminCmd(ctx *cli.Context) error {
 		return err
 	}
 
-	cfg, err = NewAgentConfig(ctx.GlobalString("config-file"))
+	cfg, err = NewConfig(ctx.GlobalString("config-file"))
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func serverCmd(ctx *cli.Context) error {
 }
 
 func agentCmd(ctx *cli.Context) error {
-	cfg, err := NewAgentConfig(ctx.GlobalString("config-file"))
+	cfg, err := NewConfig(ctx.GlobalString("config-file"))
 	if err != nil {
 		return err
 	}

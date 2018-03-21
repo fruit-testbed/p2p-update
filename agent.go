@@ -30,14 +30,14 @@ var (
 )
 
 type Agent struct {
-	Config        AgentConfig
+	Config        Config
 	Overlay       *OverlayConn
 	PublicKey     openssl.PublicKey
 	TorrentClient *torrent.Client
 	Updates       map[string]*Update
 }
 
-type AgentConfig struct {
+type Config struct {
 	OverlayConfig OverlayConfig `json:"overlay,omitempty"`
 	PublicKeyFile string        `json:"public-key-file,omitempty"`
 
@@ -54,10 +54,10 @@ type AgentConfig struct {
 	} `json:"bittorrent,omitempty"`
 }
 
-func NewAgentConfig(filename string) (AgentConfig, error) {
+func NewConfig(filename string) (Config, error) {
 	var (
 		f   *os.File
-		cfg AgentConfig
+		cfg Config
 		err error
 	)
 
@@ -67,7 +67,7 @@ func NewAgentConfig(filename string) (AgentConfig, error) {
 	return cfg, err
 }
 
-func (a Agent) Start(cfg AgentConfig) error {
+func (a Agent) Start(cfg Config) error {
 	var (
 		b   []byte
 		err error
