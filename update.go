@@ -21,14 +21,40 @@ type Update struct {
 	Metainfo Metainfo `json:"metainfo"`
 	Filename string   `json:"filename"`
 
-	torrent *torrent.Torrent
-	stopped bool
+	torrent  *torrent.Torrent
+	stopped  bool
+	automata *Automata
 }
 
 // NewUpdate creates an Update instance from given torrent-file++.
 func NewUpdate(b []byte) (*Update, error) {
 	u := Update{}
 	err := bencode.DecodeBytes(b, &u.Metainfo)
+
+	// TODO: complete below Automata
+	u.automata = NewAutomata(
+		stateDeleted,
+		[]Transition{
+			Transition{Src: stateDeleted, Event: eventCreate, Dest: stateCreated},
+			Transition{Src: stateCreated, Event: eventDownload, Dest: stateDownloading},
+			Transition{Src: stateCreated, Event: eventDelete, Dest: stateDeleted},
+			Transition{Src: stateDownloading, Event: eventStop, Dest: stateCreated},
+			Transition{Src: stateDownloading, Event: eventError, Dest: stateDownloadError},
+			Transition{Src: stateDownloading, Event: eventSuccess, Dest: stateDownloaded},
+			Transition{Src: stateDownloadError, Event: eventUnderLimit, Dest: stateDownloading},
+			Transition{Src: stateDownloadError, Event: eventOverLimit, Dest: stateCreated},
+			Transition{Src: stateDownloaded, Event: eventDeploy, Dest: stateDeploying},
+			Transition{Src: stateDownloaded, Event: eventDelete, Dest: stateDeleted},
+			Transition{Src: stateDeploying, Event: eventStop, Dest: stateDownloaded},
+			Transition{Src: stateDeploying, Event: eventSuccess, Dest: stateDeployed},
+			Transition{Src: stateDeploying, Event: eventError, Dest: stateDeployError},
+			Transition{Src: stateDeployError, Event: eventUnderLimit, Dest: stateDeploying},
+			Transition{Src: stateDeployError, Event: eventOverLimit, Dest: stateDownloaded},
+			Transition{Src: stateDeployed, Event: eventDelete, Dest: stateDeleted},
+		},
+		callbacks{},
+	)
+
 	return &u, err
 }
 
