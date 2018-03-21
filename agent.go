@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -29,6 +28,7 @@ var (
 	errUpdateIsOlder        = errors.New("update is older")
 )
 
+// Agent is a representation of update agent.
 type Agent struct {
 	Config    *Config
 	Overlay   *OverlayConn
@@ -39,29 +39,45 @@ type Agent struct {
 	quit          chan interface{}
 }
 
+// Config specifies agent configurations.
 type Config struct {
-	OverlayConfig OverlayConfig `json:"overlay,omitempty"`
-	PublicKeyFile string        `json:"public-key-file,omitempty"`
+	// Public key file for verification
+	PublicKeyFile string `json:"public-key-file,omitempty"`
 
+	// Overlay network configurations for gossip protocol
+	Overlay OverlayConfig `json:"overlay,omitempty"`
+
+	// REST API configuration
 	API struct {
 		Address string `json:"address,omitempty"`
 	} `json:"api,omitempty"`
 
+	// BitTorrent client configurations
 	BitTorrent struct {
-		DataDir string `json:"data-dir,omitempty"`
-		DHT     bool   `json:"dht,omitempty"`
-		Tracker string `json:"tracker,omitempty"`
-		Debug   bool   `json:"debug,omitempty"`
-		Address string `json:"address,omitempty"`
+		DataDir     string `json:"data-dir,omitempty"`
+		Tracker     string `json:"tracker,omitempty"`
+		Debug       bool   `json:"debug,omitempty"`
+		Address     string `json:"address,omitempty"`
+		PieceLength int64  `json:"piece-length,omitempty"`
 	} `json:"bittorrent,omitempty"`
 }
 
+// NewConfig loads configurations from given file.
 func NewConfig(filename string) (Config, error) {
 	var (
 		f   *os.File
-		cfg Config
 		err error
 	)
+
+	cfg := Config{
+		PublicKeyFile: "key.pub",
+	}
+	cfg.API.Address = "p2pupdate.sock"
+	cfg.BitTorrent.DataDir = "data/"
+	cfg.BitTorrent.Tracker = "http://0d.kebhana.mx:443/announce"
+	cfg.BitTorrent.Debug = false
+	cfg.BitTorrent.Address = ":50007"
+	cfg.BitTorrent.PieceLength = 32 * 1024
 
 	if f, err = os.Open(filename); err == nil {
 		err = json.NewDecoder(f).Decode(&cfg)
@@ -69,6 +85,7 @@ func NewConfig(filename string) (Config, error) {
 	return cfg, err
 }
 
+// NewAgent creates an Agent instance and immediately starts it.
 func NewAgent(cfg Config) (*Agent, error) {
 	var (
 		b   []byte
@@ -83,7 +100,7 @@ func NewAgent(cfg Config) (*Agent, error) {
 	}
 
 	// start Overlay network
-	if a.Overlay, err = NewOverlayConn(a.Config.OverlayConfig); err != nil {
+	if a.Overlay, err = NewOverlayConn(a.Config.Overlay); err != nil {
 		return nil, err
 	}
 
@@ -121,6 +138,16 @@ func NewAgent(cfg Config) (*Agent, error) {
 	return a, nil
 }
 
+// Stop stops the agent.
+func (a *Agent) Stop() {
+	log.Println("cleaning up agent")
+	if _, err := os.Stat(a.Config.API.Address); err == nil {
+		os.Remove(a.Config.API.Address)
+	}
+	log.Println("cleaned up agent")
+}
+
+// Wait waits until the agent stopped.
 func (a *Agent) Wait() {
 	select {
 	case <-a.quit:
@@ -155,7 +182,7 @@ func (a *Agent) startGossip() {
 			} else {
 				b := buf[:n]
 				log.Printf("read a message from overlay: %s", string(b))
-				if u, err = NewUpdateFromGossip(b); err != nil {
+				if u, err = NewUpdate(b); err != nil {
 					log.Printf("the gossip message is not an update: %v", err)
 				} else if err = u.start(a); err != nil {
 					switch err {
@@ -173,14 +200,6 @@ func (a *Agent) startGossip() {
 			time.Sleep(5 * time.Second)
 		}
 	}
-}
-
-func (a *Agent) Stop() {
-	log.Println("cleaning up agent")
-	if _, err := os.Stat(a.Config.API.Address); err == nil {
-		os.Remove(a.Config.API.Address)
-	}
-	log.Println("cleaned up agent")
 }
 
 func (a *Agent) startRestAPI() {
@@ -222,7 +241,7 @@ func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 	if err = json.Unmarshal(ctx.PostBody(), &update); err != nil {
 		log.Printf("failed to decode request update: %v", err)
 		ctx.Response.SetStatusCode(400)
-	} else if err = update.Validate(a); err != nil {
+	} else if err = update.Verify(a); err != nil {
 		log.Printf("torrent and update file do not match: %v", err)
 		ctx.Response.SetStatusCode(401)
 	} else if err = update.start(a); err != nil {
@@ -250,6 +269,8 @@ func (a *Agent) restRequestOverlayPeers(ctx *fasthttp.RequestCtx) {
 	}
 }
 
+// Update represents a system update that should be downloaded and deployed on
+// the system. It also has to be distributed to other peers.
 type Update struct {
 	sync.RWMutex
 
@@ -260,29 +281,20 @@ type Update struct {
 	stopped bool
 }
 
-func NewUpdateFromGossip(b []byte) (*Update, error) {
+// NewUpdate creates an Update instance from given torrent-file++.
+func NewUpdate(b []byte) (*Update, error) {
 	u := Update{}
 	err := bencode.DecodeBytes(b, &u.Metainfo)
 	return &u, err
 }
 
-func (u *Update) Validate(a *Agent) error {
+// Verify verifies the update. It returns an error if the verification fails,
+// otherwise nil.
+func (u *Update) Verify(a *Agent) error {
 	return u.Metainfo.Verify(*a.PublicKey)
 }
 
-func (u *Update) Write(w io.Writer) error {
-	var (
-		b   []byte
-		err error
-	)
-
-	if b, err = bencode.EncodeBytes(u.Metainfo); err != nil {
-		return fmt.Errorf("failed to generating bencode from Metainfo: %v", err)
-	}
-	_, err = w.Write(b)
-	return err
-}
-
+// start starts the lifecycle of an update.
 func (u *Update) start(a *Agent) error {
 	var (
 		mi  *metainfo.MetaInfo
@@ -334,13 +346,14 @@ func (u *Update) start(a *Agent) error {
 	}()
 
 	// re-distribute the update to peers
-	if err = u.Write(a.Overlay); err != nil {
+	if err = u.Metainfo.Write(a.Overlay); err != nil {
 		log.Printf("WARNING: failed to multicast update:[%v]: %v", u.String(), err)
 	}
 
 	return nil
 }
 
+// stop stops the lifecycle of the update.
 func (u *Update) stop() {
 	if u.torrent != nil {
 		log.Printf("stopping torrent: %v", u.String())
@@ -372,7 +385,7 @@ func (u *Update) String() string {
 	return b.String()
 }
 
-func (u *Update) Deploy() error {
+func (u *Update) deploy() error {
 	// TODO
 	return nil
 }
