@@ -130,6 +130,8 @@ func NewAgent(cfg Config) (*Agent, error) {
 	}
 	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddr())
 
+	a.loadUpdates()
+
 	go a.startCatchingSignals()
 	go a.startRestAPI()
 	go a.startGossip()
@@ -205,6 +207,42 @@ func (a *Agent) startRestAPI() {
 	}
 }
 
+// loadUpdates loads existing updates from local database (or files).
+func (a *Agent) loadUpdates() {
+	log.Println("Loading updates from local database")
+
+	_, err := os.Stat(a.Config.BitTorrent.MetadataDir)
+	if err != nil {
+		if os.Mkdir(a.Config.BitTorrent.MetadataDir, 0700) != nil {
+			log.Fatalf("cannot create metadata dir: %s", a.Config.BitTorrent.MetadataDir)
+		}
+	}
+
+	files, err := ioutil.ReadDir(a.Config.BitTorrent.MetadataDir)
+	if err != nil {
+		log.Fatalf("cannot read metadata dir: %s", a.Config.BitTorrent.MetadataDir)
+	}
+	for _, f := range files {
+		u, err := LoadUpdateFromFile(f.Name())
+		if err != nil {
+			log.Printf("failed loading update metadata file %s: %v", f.Name(), err)
+			continue
+		}
+		if cu, ok := a.Updates[u.Metainfo.UUID]; ok {
+			if cu.Metainfo.Version > u.Metainfo.Version {
+				continue
+			}
+			cu.Delete()
+		}
+		a.Updates[u.Metainfo.UUID] = u
+	}
+	log.Printf("Loaded %d updates", len(a.Updates))
+
+	for _, u := range a.Updates {
+		u.Start(a)
+	}
+}
+
 func (a *Agent) restRequestHandler(ctx *fasthttp.RequestCtx) {
 	if string(ctx.Host()) != "v1" {
 		ctx.Response.SetStatusCode(400)
@@ -238,7 +276,11 @@ func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 	if err = json.Unmarshal(ctx.PostBody(), &u); err != nil {
 		log.Printf("failed to decode request update: %v", err)
 		ctx.Response.SetStatusCode(400)
-	} else if err = u.Start(a); err != nil {
+		return
+	}
+
+	u.SetMetadataFilename(a.Config.BitTorrent.MetadataDir)
+	if err = u.Start(a); err != nil {
 		switch err {
 		case errUpdateIsAlreadyExist:
 			ctx.Response.SetStatusCode(208)

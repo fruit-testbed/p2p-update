@@ -63,8 +63,7 @@ func NewUpdateFromMessage(b []byte, metadataDir string) (*Update, error) {
 	if err := bencode.DecodeBytes(b, &u.Metainfo); err != nil {
 		return nil, err
 	}
-	u.metadataFilename = filepath.Join(metadataDir, fmt.Sprintf("%s-v%d",
-		u.Metainfo.UUID, u.Metainfo.Version))
+	u.SetMetadataFilename(metadataDir)
 	return &u, nil
 }
 
@@ -82,7 +81,14 @@ func LoadUpdateFromFile(filename string) (*Update, error) {
 	return &u, json.NewDecoder(f).Decode(&u)
 }
 
-// Save writes Update description to a metadata file.
+// SetMetadataFilename sets the filename where the metadata of this update
+// will be saved.
+func (u *Update) SetMetadataFilename(metadataDir string) {
+	u.metadataFilename = filepath.Join(metadataDir, fmt.Sprintf("%s-v%d",
+		u.Metainfo.UUID, u.Metainfo.Version))
+}
+
+// Save writes Update metadata to file.
 func (u *Update) Save() error {
 	u.RLock()
 	defer u.RUnlock()
@@ -126,6 +132,10 @@ func (u *Update) Start(a *Agent) error {
 		}
 		log.Printf("stopping older update of uuid:%s", u.Metainfo.UUID)
 		cu.Stop()
+		if err = cu.Delete(); err != nil {
+			log.Printf("WARNING: failed to delete update uuid:%s version:%d : %v",
+				cu.Metainfo.UUID, cu.Metainfo.Version, err)
+		}
 	} else {
 		log.Printf("older update of uuid:%s does not exist", u.Metainfo.UUID)
 	}
