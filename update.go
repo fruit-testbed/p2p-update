@@ -81,6 +81,7 @@ func LoadUpdateFromFile(filename string, a *Agent) (*Update, error) {
 	return &u, json.NewDecoder(f).Decode(&u)
 }
 
+// MetadataFilename returns the name of the update metadata file.
 func (u *Update) MetadataFilename() string {
 	filename := fmt.Sprintf("%s-v%d", u.Metainfo.UUID, u.Metainfo.Version)
 	return filepath.Join(u.agent.Config.BitTorrent.MetadataDir, filename)

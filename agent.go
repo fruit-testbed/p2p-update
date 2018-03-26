@@ -22,7 +22,10 @@ import (
 )
 
 const (
-	DefaultTracker     = "http://0d.kebhana.mx:443/announce"
+	// DefaultTracker is the default BitTorrent tracker address
+	DefaultTracker = "http://0d.kebhana.mx:443/announce"
+
+	// DefaultPieceLength is the default length of BitTorrent file-piece
 	DefaultPieceLength = 32 * 1024
 )
 
