@@ -9,12 +9,17 @@
     [x] re-multicast newer torrent-file
 [x] start bittorrent seeding to serve update file
 [x] start bittorrent download/seeding when it receives a new update notification
-[ ] implement the state machine of update lifecycle
-[ ] data directory must have a structure of 'data/<uuid>/<version>/<files>'
-    [ ] delete older version
+[?] update metadata file must have path of 'metadata/<uuid>-v<version>'
+[?] save update metadata when its state changed
+[?] delete older version of update
+[?] load updates from local database when starting the agent
+[ ] allow `admin` command to submit update from any working directory
+    [ ] copy the update file to agent's `data/` directory
+    [ ] use format `<uuid>-v<version>-<original-filename>` as the new name of update file
+    [ ] modify torrent-file to apply above format
 [ ] probe available port at NAT router before starting torrent client
     - see https://github.com/anacrolix/torrent/blob/5a7c4fc135eda0996079a46b43bc0ee8116d7093/portfwd.go#L12
-    - the port can be picked randomly
+    - the port can be picked randomly (between 10000 - 19999)
 [ ] implement fallback to TCP when UDP does not work e.g. DCS firewall
 
 
