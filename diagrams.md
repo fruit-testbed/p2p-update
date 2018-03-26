@@ -57,11 +57,13 @@ graph TD;
 	downloadError -->|overLimit| created;
 	downloaded -->|deploy| deploying;
 	downloaded -->|delete| deleted;
+	downloaded -->|fileRemoved| created;
 	deploying -->|success| deployed;
 	deploying -->|error| deployError;
 	deploying -->|stop| downloaded;
 	deployError -->|underLimit| deploying;
 	deployError -->|overLimit| downloaded;
 	deployed -->|delete| deleted;
+	deployed -->|fileRemoved| created;
 	deleted -->|create| created;
 ```
