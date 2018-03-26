@@ -13,7 +13,13 @@
 # key file
 /fruit-key.pub
 
+# config file
 /config.json
 
 # Example REST API Post data
 /update*.json
+
+# data directory
+/torrent
+/metadata
+/data

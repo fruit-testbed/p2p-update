@@ -5,12 +5,18 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"os/user"
+	"path/filepath"
 	"sync"
 
 	"github.com/gortc/stun"
@@ -20,10 +26,8 @@ import (
 
 func submitCmd(ctx *cli.Context) error {
 	var (
-		mi      *Metainfo
 		content []byte
 		key     openssl.PrivateKey
-		cfg     Config
 		err     error
 	)
 
@@ -34,14 +38,12 @@ func submitCmd(ctx *cli.Context) error {
 		return err
 	}
 
-	cfg, err = NewConfig(ctx.GlobalString("config-file"))
-	if err != nil {
-		return err
-	}
-
 	filename := ctx.String("file")
 	if _, err := os.Stat(filename); err != nil {
 		return fmt.Errorf("update file '%s' does not exist", filename)
+	}
+	if filename, err = filepath.Abs(filename); err != nil {
+		return err
 	}
 
 	uuid := ctx.String("uuid")
@@ -49,32 +51,56 @@ func submitCmd(ctx *cli.Context) error {
 		return fmt.Errorf("UUID is empty")
 	}
 
-	mi, err = NewMetainfo(
+	mi, err := NewMetainfo(
 		filename,
 		uuid,
 		int(ctx.Uint("version")),
-		cfg.BitTorrent.Tracker,
-		cfg.BitTorrent.PieceLength,
+		ctx.String("tracker"),
+		int64(ctx.Uint64("piece-length")),
 		&key)
 	if err != nil {
 		return err
 	}
 
-	w := os.Stdout
+	u := Update{
+		Source:   filename,
+		Metainfo: *mi,
+	}
+
 	filename = ctx.String("output")
-	if filename != "" {
-		f, err := os.OpenFile(filename,
-			os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			return err
+	if len(filename) != 0 {
+		var w io.Writer
+		if filename == "-" {
+			w = os.Stdout
+		} else {
+			f, err := os.OpenFile(filename,
+				os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			w = f
 		}
-		defer f.Close()
-		w = f
+		return json.NewEncoder(w).Encode(&u)
 	}
-	if !ctx.Bool("json") {
-		return mi.Write(w)
+
+	// submit to agent
+	buf := bytes.NewBufferString("")
+	if err = json.NewEncoder(buf).Encode(&u); err != nil {
+		return err
 	}
-	return json.NewEncoder(w).Encode(mi)
+	httpc := http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", ctx.String("unix-socket"))
+			},
+		},
+	}
+	resp, err := httpc.Post("http://v1/update", "application/json", buf)
+	if err == nil && resp.StatusCode != 200 {
+		err = fmt.Errorf("status code: %d", resp.StatusCode)
+	}
+	return err
 }
 
 func serverCmd(ctx *cli.Context) error {
@@ -180,11 +206,22 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "output, o",
-					Usage: "output torrent file (default: STDOUT)",
+					Usage: "output torrent file, or - for STDOUT",
 				},
-				cli.BoolFlag{
-					Name:  "json, j",
-					Usage: "use JSON instead of Bencode",
+				cli.StringFlag{
+					Name:  "tracker, t",
+					Value: DefaultTracker,
+					Usage: "BitTorrent tracker address",
+				},
+				cli.Uint64Flag{
+					Name:  "piece-length, l",
+					Value: DefaultPieceLength,
+					Usage: "Piece length",
+				},
+				cli.StringFlag{
+					Name:  "unix-socket, s",
+					Value: "p2pupdate.sock",
+					Usage: "Agent's unix socket file",
 				},
 			},
 		},

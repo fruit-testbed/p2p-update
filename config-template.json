@@ -2,6 +2,7 @@
   "public-key-file": "key.pub",
   "bittorrent": {
     "data-dir": "data/",
+    "metadata-dir": "metadata/",
     "tracker": "https://fruit-testbed.org:443/announce"
   },
   "api": {

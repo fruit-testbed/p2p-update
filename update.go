@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -44,35 +43,36 @@ const (
 type Update struct {
 	sync.RWMutex
 
-	Metainfo Metainfo  `json:"metainfo"`
-	Deployed time.Time `json:"deployed"`
+	Metainfo Metainfo  `json:"metainfo,omitempty"`
+	Deployed time.Time `json:"deployed,omitempty"`
+	Source   string    `json:"source,omitempty"`
 
-	torrent          *torrent.Torrent
-	stopped          bool
-	sent             bool
-	deployFails      int
-	metadataFilename string
+	torrent     *torrent.Torrent
+	stopped     bool
+	sent        bool
+	deployFails int
+	agent       *Agent
 }
 
 // NewUpdateFromMessage creates an Update instance from a byte-array of torrent++.
-func NewUpdateFromMessage(b []byte, metadataDir string) (*Update, error) {
+func NewUpdateFromMessage(b []byte, a *Agent) (*Update, error) {
 	u := Update{
 		stopped: true,
 		sent:    false,
+		agent:   a,
 	}
 	if err := bencode.DecodeBytes(b, &u.Metainfo); err != nil {
 		return nil, err
 	}
-	u.SetMetadataFilename(metadataDir)
 	return &u, nil
 }
 
 // LoadUpdateFromFile loads Update description from given filename.
-func LoadUpdateFromFile(filename string) (*Update, error) {
+func LoadUpdateFromFile(filename string, a *Agent) (*Update, error) {
 	u := Update{
-		stopped:          true,
-		sent:             false,
-		metadataFilename: filename,
+		stopped: true,
+		sent:    false,
+		agent:   a,
 	}
 	f, err := os.Open(filename)
 	if err != nil {
@@ -81,18 +81,17 @@ func LoadUpdateFromFile(filename string) (*Update, error) {
 	return &u, json.NewDecoder(f).Decode(&u)
 }
 
-// SetMetadataFilename sets the filename where the metadata of this update
-// will be saved.
-func (u *Update) SetMetadataFilename(metadataDir string) {
-	u.metadataFilename = filepath.Join(metadataDir, fmt.Sprintf("%s-v%d",
-		u.Metainfo.UUID, u.Metainfo.Version))
+func (u *Update) MetadataFilename() string {
+	filename := fmt.Sprintf("%s-v%d", u.Metainfo.UUID, u.Metainfo.Version)
+	return filepath.Join(u.agent.Config.BitTorrent.MetadataDir, filename)
 }
 
 // Save writes Update metadata to file.
 func (u *Update) Save() error {
 	u.RLock()
 	defer u.RUnlock()
-	f, err := os.OpenFile(u.metadataFilename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
+	filename := u.MetadataFilename()
+	f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
 	if err != nil {
 		return err
 	}
@@ -102,7 +101,8 @@ func (u *Update) Save() error {
 // Verify verifies the update. It returns an error if the verification fails,
 // otherwise nil.
 func (u *Update) Verify(a *Agent) error {
-	if u.Metainfo.Verify(*a.PublicKey) != nil {
+	if err := u.Metainfo.Verify(*a.PublicKey); err != nil {
+		log.Printf("verification failed: %v", err)
 		return errUpdateVerificationFailed
 	}
 	return nil
@@ -130,7 +130,6 @@ func (u *Update) Start(a *Agent) error {
 		} else if cu.Metainfo.Version == u.Metainfo.Version {
 			return errUpdateIsAlreadyExist
 		}
-		log.Printf("stopping older update of uuid:%s", u.Metainfo.UUID)
 		cu.Stop()
 		if err = cu.Delete(); err != nil {
 			log.Printf("WARNING: failed to delete update uuid:%s version:%d : %v",
@@ -139,6 +138,7 @@ func (u *Update) Start(a *Agent) error {
 	} else {
 		log.Printf("older update of uuid:%s does not exist", u.Metainfo.UUID)
 	}
+
 	a.Updates[u.Metainfo.UUID] = u
 
 	// activate torrent
@@ -161,7 +161,7 @@ func (u *Update) Start(a *Agent) error {
 func (u *Update) monitor(a *Agent) {
 	for {
 		time.Sleep(5 * time.Second)
-		toSave := false
+		toSave := true
 
 		u.Lock()
 		if u.stopped {
@@ -187,6 +187,7 @@ func (u *Update) monitor(a *Agent) {
 
 		if toSave {
 			u.Save()
+			toSave = false
 		}
 	}
 }
@@ -195,34 +196,40 @@ func (u *Update) monitor(a *Agent) {
 func (u *Update) Stop() {
 	u.Lock()
 	defer u.Unlock()
+	log.Printf("stopping update: %v", u.String())
+	u.stopped = true
 	if u.torrent != nil {
-		log.Printf("stopping torrent: %v", u.String())
 		u.torrent.Drop()
 		<-u.torrent.Closed()
-		u.stopped = true
-		log.Printf("closed torrent: %v", u.String())
 	}
+	log.Printf("stopped update: %v", u.String())
 }
 
 // Delete deletes this update files.
 func (u *Update) Delete() error {
 	u.Lock()
 	defer u.Unlock()
+	log.Printf("deleting update: %v", u.String())
 	if !u.stopped {
 		return fmt.Errorf("update has not been stopped")
 	}
 	if u.torrent != nil {
 		for _, f := range u.torrent.Files() {
-			if _, err := os.Stat(f.Path()); err == nil {
-				if err = os.Remove(f.Path()); err != nil {
+			filename := filepath.Join(u.agent.Config.BitTorrent.DataDir, f.Path())
+			if _, err := os.Stat(filename); err == nil {
+				if err = os.Remove(filename); err != nil {
 					return err
 				}
 			}
 		}
 	}
-	if _, err := os.Stat(u.metadataFilename); err == nil {
-		return os.Remove(u.metadataFilename)
+	filename := u.MetadataFilename()
+	if _, err := os.Stat(filename); err == nil {
+		if err := os.Remove(filename); err != nil {
+			return err
+		}
 	}
+	log.Printf("deleted update: %v", u.String())
 	return nil
 }
 
@@ -283,17 +290,31 @@ func (u *Update) deploy() {
 }*/
 
 func (u *Update) deployWithShell() error {
+	var err error
+
 	for _, f := range u.torrent.Files() {
+		script := filepath.Join(u.agent.Config.BitTorrent.DataDir, f.Path())
+		cmd := exec.Command("/bin/sh", script)
 		log.Printf("executing update shell uuid:%s version:%d file:%s",
-			u.Metainfo.UUID, u.Metainfo.Version, f.Path())
-		cmd := exec.Command("timeout", "-t", strconv.Itoa(ShellExecutionTimeout), "/bin/sh", f.Path())
-		if err := cmd.Run(); err != nil {
-			log.Printf("ERROR: failed executing update shell uuid:%s version:%d file:%s",
-				u.Metainfo.UUID, u.Metainfo.Version, f.Path())
-			return err
+			u.Metainfo.UUID, u.Metainfo.Version, script)
+		if err = cmd.Start(); err != nil {
+			log.Printf("ERROR: failed executing update shell uuid:%s version:%d file:%s - %v",
+				u.Metainfo.UUID, u.Metainfo.Version, f.Path(), err)
+			break
 		}
-		log.Printf("executed update shell script uuid:%s version:%d file:%s",
-			u.Metainfo.UUID, u.Metainfo.Version, f.Path())
+		timer := time.AfterFunc(ShellExecutionTimeout*time.Second, func() {
+			cmd.Process.Kill()
+		})
+		err = cmd.Wait()
+		timer.Stop()
+		if err == nil {
+			log.Printf("executed update shell script uuid:%s version:%d file:%s",
+				u.Metainfo.UUID, u.Metainfo.Version, f.Path())
+		} else {
+			log.Printf("ERROR: executed update shell with error uuid:%s version:%d file:%s - %v",
+				u.Metainfo.UUID, u.Metainfo.Version, f.Path(), err)
+			break
+		}
 	}
-	return nil
+	return err
 }

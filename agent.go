@@ -6,7 +6,9 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"time"
 
 	"github.com/anacrolix/dht"
@@ -17,6 +19,11 @@ import (
 	"github.com/spacemonkeygo/openssl"
 
 	"github.com/valyala/fasthttp"
+)
+
+const (
+	DefaultTracker     = "http://0d.kebhana.mx:443/announce"
+	DefaultPieceLength = 32 * 1024
 )
 
 var (
@@ -73,10 +80,10 @@ func NewConfig(filename string) (Config, error) {
 	cfg.API.Address = "p2pupdate.sock"
 	cfg.BitTorrent.MetadataDir = "torrent/"
 	cfg.BitTorrent.DataDir = "data/"
-	cfg.BitTorrent.Tracker = "http://0d.kebhana.mx:443/announce"
+	cfg.BitTorrent.Tracker = DefaultTracker
 	cfg.BitTorrent.Debug = false
 	cfg.BitTorrent.Address = ":50007"
-	cfg.BitTorrent.PieceLength = 32 * 1024
+	cfg.BitTorrent.PieceLength = DefaultPieceLength
 
 	if f, err = os.Open(filename); err == nil {
 		err = json.NewDecoder(f).Decode(&cfg)
@@ -96,6 +103,13 @@ func NewAgent(cfg Config) (*Agent, error) {
 		Config:  &cfg,
 		Updates: make(map[string]*Update),
 		quit:    make(chan interface{}),
+	}
+
+	if _, err := os.Stat(cfg.BitTorrent.DataDir); err != nil {
+		os.Mkdir(cfg.BitTorrent.DataDir, 0750)
+	}
+	if _, err := os.Stat(cfg.BitTorrent.MetadataDir); err != nil {
+		os.Mkdir(cfg.BitTorrent.MetadataDir, 0750)
 	}
 
 	// start Overlay network
@@ -129,6 +143,10 @@ func NewAgent(cfg Config) (*Agent, error) {
 		return nil, fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
 	}
 	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddr())
+
+	if json, err := json.Marshal(a.Config); err == nil {
+		log.Printf("config: %s", string(json))
+	}
 
 	a.loadUpdates()
 
@@ -183,7 +201,7 @@ func (a *Agent) startGossip() {
 			} else {
 				b := buf[:n]
 				log.Printf("read a message from overlay: %s", string(b))
-				if u, err = NewUpdateFromMessage(b, a.Config.BitTorrent.MetadataDir); err != nil {
+				if u, err = NewUpdateFromMessage(b, a); err != nil {
 					log.Printf("the gossip message is not an update: %v", err)
 				} else if err = u.Start(a); err != nil {
 					switch err {
@@ -223,24 +241,15 @@ func (a *Agent) loadUpdates() {
 		log.Fatalf("cannot read metadata dir: %s", a.Config.BitTorrent.MetadataDir)
 	}
 	for _, f := range files {
-		u, err := LoadUpdateFromFile(f.Name())
+		filename := filepath.Join(a.Config.BitTorrent.MetadataDir, f.Name())
+		u, err := LoadUpdateFromFile(filename, a)
 		if err != nil {
 			log.Printf("failed loading update metadata file %s: %v", f.Name(), err)
 			continue
 		}
-		if cu, ok := a.Updates[u.Metainfo.UUID]; ok {
-			if cu.Metainfo.Version > u.Metainfo.Version {
-				continue
-			}
-			cu.Delete()
-		}
-		a.Updates[u.Metainfo.UUID] = u
-	}
-	log.Printf("Loaded %d updates", len(a.Updates))
-
-	for _, u := range a.Updates {
 		u.Start(a)
 	}
+	log.Printf("Loaded %d updates", len(a.Updates))
 }
 
 func (a *Agent) restRequestHandler(ctx *fasthttp.RequestCtx) {
@@ -278,8 +287,23 @@ func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 		ctx.Response.SetStatusCode(400)
 		return
 	}
+	u.agent = a
 
-	u.SetMetadataFilename(a.Config.BitTorrent.MetadataDir)
+	if _, err = os.Stat(u.Source); err == nil {
+		dest := filepath.Join(a.Config.BitTorrent.DataDir, u.Metainfo.Info.Name)
+		cmd := exec.Command("cp", "-af", u.Source, dest)
+		if err := cmd.Run(); err != nil {
+			log.Printf("failed copying update file from '%s' to '%s': %v",
+				u.Source, dest, err)
+			ctx.Response.SetStatusCode(403)
+			return
+		}
+	} else {
+		log.Printf("source file '%s' does not exist", u.Source)
+		ctx.Response.SetStatusCode(404)
+		return
+	}
+
 	if err = u.Start(a); err != nil {
 		switch err {
 		case errUpdateIsAlreadyExist:
@@ -290,8 +314,8 @@ func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 			ctx.Response.SetStatusCode(406)
 		default:
 			ctx.Response.SetStatusCode(500)
-			log.Printf("failed to activating the torrent: %v", err)
 		}
+		log.Printf("failed to activating the torrent: %v", err)
 	} else {
 		ctx.Response.SetStatusCode(200)
 	}

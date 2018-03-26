@@ -26,7 +26,6 @@ type Metainfo struct {
 	CreationDate int64           `bencode:"creation date,omitempty,ignore_unmarshal_type_error"`
 	CreatedBy    string          `bencode:"created by,omitempty"`
 	Encoding     string          `bencode:"encoding,omitempty"`
-	Source       string          `bencode:"source,omitempty"`
 
 	// Field from BitTorrent signing proposal
 	// Reference: http://www.bittorrent.org/beps/bep_0035.html
@@ -49,7 +48,6 @@ type Signature struct {
 func NewMetainfo(filename, uuid string, ver int, tracker string,
 	pieceLength int64, privkey *openssl.PrivateKey) (*Metainfo, error) {
 	mi := Metainfo{
-		Source:       filename,
 		UUID:         uuid,
 		Version:      ver,
 		Announce:     tracker,
