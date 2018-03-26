@@ -21,6 +21,7 @@
     - see https://github.com/anacrolix/torrent/blob/5a7c4fc135eda0996079a46b43bc0ee8116d7093/portfwd.go#L12
     - the port can be picked randomly (between 10000 - 19999)
 [ ] implement fallback to TCP when UDP does not work e.g. DCS firewall
+[ ] enable multiple servers -- this allows an agent to join two difference clusters
 
 
 Legends:
