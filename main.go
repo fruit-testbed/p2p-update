@@ -18,6 +18,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/gortc/stun"
 	"github.com/spacemonkeygo/openssl"
@@ -51,10 +52,15 @@ func submitCmd(ctx *cli.Context) error {
 		return fmt.Errorf("UUID is empty")
 	}
 
+	ver := ctx.Uint64("version")
+	if ver == 0 {
+		ver = uint64(time.Now().UTC().Unix())
+	}
+
 	mi, err := NewMetainfo(
 		filename,
 		uuid,
-		int(ctx.Uint("version")),
+		ver,
 		ctx.String("tracker"),
 		int64(ctx.Uint64("piece-length")),
 		&key)
@@ -190,9 +196,9 @@ func main() {
 					Name:  "file, f",
 					Usage: "Update file",
 				},
-				cli.UintFlag{
+				cli.Uint64Flag{
 					Name:  "version, v",
-					Usage: "Update version",
+					Usage: "Update version, 0 equals to current Unix timestamp",
 				},
 				cli.StringFlag{
 					Name:  "uuid, u",
