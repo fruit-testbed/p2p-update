@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	errUpdateIsAlreadyExist = errors.New("update is already exist")
-	errUpdateIsOlder        = errors.New("update is older")
+	errUpdateIsAlreadyExist     = errors.New("update is already exist")
+	errUpdateIsOlder            = errors.New("update is older")
+	errUpdateVerificationFailed = errors.New("update verification failed")
 )
 
 // Agent is a representation of update agent.
@@ -50,6 +51,7 @@ type Config struct {
 
 	// BitTorrent client configurations
 	BitTorrent struct {
+		MetadataDir string `json:"metadata-dir,omitempty"`
 		DataDir     string `json:"data-dir,omitempty"`
 		Tracker     string `json:"tracker,omitempty"`
 		Debug       bool   `json:"debug,omitempty"`
@@ -69,6 +71,7 @@ func NewConfig(filename string) (Config, error) {
 		PublicKeyFile: "key.pub",
 	}
 	cfg.API.Address = "p2pupdate.sock"
+	cfg.BitTorrent.MetadataDir = "torrent/"
 	cfg.BitTorrent.DataDir = "data/"
 	cfg.BitTorrent.Tracker = "http://0d.kebhana.mx:443/announce"
 	cfg.BitTorrent.Debug = false
@@ -178,11 +181,11 @@ func (a *Agent) startGossip() {
 			} else {
 				b := buf[:n]
 				log.Printf("read a message from overlay: %s", string(b))
-				if u, err = NewUpdateFromMessage(b); err != nil {
+				if u, err = NewUpdateFromMessage(b, a.Config.BitTorrent.MetadataDir); err != nil {
 					log.Printf("the gossip message is not an update: %v", err)
 				} else if err = u.Start(a); err != nil {
 					switch err {
-					case errUpdateIsAlreadyExist, errUpdateIsOlder:
+					case errUpdateIsAlreadyExist, errUpdateIsOlder, errUpdateVerificationFailed:
 						log.Printf("ignored the update: %v", err)
 					default:
 						log.Printf("failed adding the torrent-file++ to TorrentClient: %v", err)
@@ -235,13 +238,12 @@ func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 	if err = json.Unmarshal(ctx.PostBody(), &u); err != nil {
 		log.Printf("failed to decode request update: %v", err)
 		ctx.Response.SetStatusCode(400)
-	} else if err = u.Verify(a); err != nil {
-		log.Printf("torrent and update file do not match: %v", err)
-		ctx.Response.SetStatusCode(401)
 	} else if err = u.Start(a); err != nil {
 		switch err {
 		case errUpdateIsAlreadyExist:
 			ctx.Response.SetStatusCode(208)
+		case errUpdateVerificationFailed:
+			ctx.Response.SetStatusCode(401)
 		case errUpdateIsOlder:
 			ctx.Response.SetStatusCode(406)
 		default:

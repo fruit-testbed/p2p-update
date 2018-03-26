@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -46,14 +47,15 @@ type Update struct {
 	Metainfo Metainfo  `json:"metainfo"`
 	Deployed time.Time `json:"deployed"`
 
-	torrent     *torrent.Torrent
-	stopped     bool
-	sent        bool
-	deployFails int
+	torrent          *torrent.Torrent
+	stopped          bool
+	sent             bool
+	deployFails      int
+	metadataFilename string
 }
 
 // NewUpdateFromMessage creates an Update instance from a byte-array of torrent++.
-func NewUpdateFromMessage(b []byte) (*Update, error) {
+func NewUpdateFromMessage(b []byte, metadataDir string) (*Update, error) {
 	u := Update{
 		stopped: true,
 		sent:    false,
@@ -61,14 +63,17 @@ func NewUpdateFromMessage(b []byte) (*Update, error) {
 	if err := bencode.DecodeBytes(b, &u.Metainfo); err != nil {
 		return nil, err
 	}
+	u.metadataFilename = filepath.Join(metadataDir, fmt.Sprintf("%s-v%d",
+		u.Metainfo.UUID, u.Metainfo.Version))
 	return &u, nil
 }
 
 // LoadUpdateFromFile loads Update description from given filename.
 func LoadUpdateFromFile(filename string) (*Update, error) {
 	u := Update{
-		stopped: true,
-		sent:    false,
+		stopped:          true,
+		sent:             false,
+		metadataFilename: filename,
 	}
 	f, err := os.Open(filename)
 	if err != nil {
@@ -77,11 +82,11 @@ func LoadUpdateFromFile(filename string) (*Update, error) {
 	return &u, json.NewDecoder(f).Decode(&u)
 }
 
-// WriteUpdateToFile writes Update description to given filename.
-func (u *Update) WriteUpdateToFile(filename string) error {
+// Save writes Update description to a metadata file.
+func (u *Update) Save() error {
 	u.RLock()
 	defer u.RUnlock()
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
+	f, err := os.OpenFile(u.metadataFilename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
 	if err != nil {
 		return err
 	}
@@ -91,17 +96,25 @@ func (u *Update) WriteUpdateToFile(filename string) error {
 // Verify verifies the update. It returns an error if the verification fails,
 // otherwise nil.
 func (u *Update) Verify(a *Agent) error {
-	return u.Metainfo.Verify(*a.PublicKey)
+	if u.Metainfo.Verify(*a.PublicKey) != nil {
+		return errUpdateVerificationFailed
+	}
+	return nil
 }
 
 // Start starts the update's lifecycle.
 func (u *Update) Start(a *Agent) error {
 	u.Lock()
+	defer u.Unlock()
 
 	var (
 		mi  *metainfo.MetaInfo
 		err error
 	)
+
+	if err = u.Verify(a); err != nil {
+		return err
+	}
 
 	// Remove existing update that has the same UUID. If the existing update
 	// is newer, then return an error.
@@ -128,7 +141,6 @@ func (u *Update) Start(a *Agent) error {
 	}
 	u.stopped = false
 	log.Printf("started update: %s", u.String())
-	u.Unlock()
 
 	// spawn a go-routine that monitors torrent's status
 	go u.monitor(a)
@@ -138,44 +150,67 @@ func (u *Update) Start(a *Agent) error {
 
 func (u *Update) monitor(a *Agent) {
 	for {
-		u.RLock()
-		stopped := u.stopped
-		sent := u.sent
-		u.RUnlock()
-		if stopped {
+		time.Sleep(5 * time.Second)
+		toSave := false
+
+		u.Lock()
+		if u.stopped {
 			break
 		}
-		if !sent {
+		if !u.sent {
 			if err := u.Send(a); err != nil {
 				log.Printf("failed sending update uuid:%s version:%d : %v",
 					u.Metainfo.UUID, u.Metainfo.Version, err)
 			}
-			u.Lock()
 			u.sent = true
-			u.Unlock()
+			toSave = true
 		}
 		if u.torrent.BytesMissing() > 0 {
 			<-u.torrent.GotInfo()
 			u.torrent.DownloadAll()
 		} else if u.Deployed.Year() < 2000 {
 			u.deploy()
+			toSave = true
 		}
 		log.Println(u.String())
-		time.Sleep(5 * time.Second)
+		u.Unlock()
+
+		if toSave {
+			u.Save()
+		}
 	}
 }
 
 // Stop stops the lifecycle of the update.
 func (u *Update) Stop() {
+	u.Lock()
+	defer u.Unlock()
 	if u.torrent != nil {
 		log.Printf("stopping torrent: %v", u.String())
-		u.Lock()
 		u.torrent.Drop()
 		<-u.torrent.Closed()
 		u.stopped = true
-		u.Unlock()
 		log.Printf("closed torrent: %v", u.String())
 	}
+}
+
+// Delete deletes this update files.
+func (u *Update) Delete() error {
+	u.Lock()
+	defer u.Unlock()
+	if !u.stopped {
+		return fmt.Errorf("update has not been stopped")
+	}
+	if u.torrent != nil {
+		for _, f := range u.torrent.Files() {
+			if _, err := os.Stat(f.Path()); err == nil {
+				if err = os.Remove(f.Path()); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // Send sends the Update to the peers.
@@ -203,12 +238,9 @@ func (u *Update) String() string {
 }
 
 func (u *Update) deploy() {
-	u.RLock()
-	deployFails := u.deployFails
-	u.RUnlock()
-	if deployFails > DeployFailsLimit {
+	if u.deployFails > DeployFailsLimit {
 		log.Printf("Too many deployment failures:%d uuid:%s version:%d",
-			deployFails, u.Metainfo.UUID, u.Metainfo.Version)
+			u.deployFails, u.Metainfo.UUID, u.Metainfo.Version)
 		return
 	}
 
@@ -226,14 +258,12 @@ func (u *Update) deploy() {
 		return
 	}
 
-	u.Lock()
 	if err != nil {
 		u.deployFails++
 	} else {
 		u.deployFails = 0
 		u.Deployed = time.Now()
 	}
-	u.Unlock()
 }
 
 /*func (u *Update) deployWithApk() {
