@@ -19,11 +19,6 @@ import (
 )
 
 var (
-	stunRealm    = "fruit-testbed.org"
-	stunPassword = "123"
-
-	maxPacketDataSize = 56 * 1024
-
 	stunDataRequest           = stun.NewType(stun.MethodData, stun.ClassRequest)
 	stunDataSuccess           = stun.NewType(stun.MethodData, stun.ClassSuccessResponse)
 	stunDataError             = stun.NewType(stun.MethodData, stun.ClassErrorResponse)

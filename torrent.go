@@ -12,11 +12,6 @@ import (
 	"github.com/zeebo/bencode"
 )
 
-const (
-	signatureName = "org.fruit-testbed"
-	softwareName  = "fruit/p2pupdate"
-)
-
 // Metainfo holds data of torrent file
 type Metainfo struct {
 	// Fields from standard BitTorrent protocol

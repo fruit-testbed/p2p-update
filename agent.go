@@ -12,21 +12,13 @@ import (
 	"time"
 
 	"github.com/anacrolix/dht"
+	"github.com/pkg/errors"
 
 	"github.com/anacrolix/torrent"
-	"github.com/pkg/errors"
 
 	"github.com/spacemonkeygo/openssl"
 
 	"github.com/valyala/fasthttp"
-)
-
-const (
-	// DefaultTracker is the default BitTorrent tracker address
-	DefaultTracker = "http://0d.kebhana.mx:443/announce"
-
-	// DefaultPieceLength is the default length of BitTorrent file-piece
-	DefaultPieceLength = 32 * 1024
 )
 
 var (

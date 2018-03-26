@@ -1,6 +1,22 @@
 package main
 
 const (
+	// DefaultTracker is the default BitTorrent tracker address
+	DefaultTracker = "http://0d.kebhana.mx:443/announce"
+
+	// DefaultPieceLength is the default length of BitTorrent file-piece
+	DefaultPieceLength = 32 * 1024
+)
+
+const (
+	signatureName = "org.fruit-testbed"
+	softwareName  = "fruit/p2p-update"
+
+	stunPassword          = "123"
+	stunMaxPacketDataSize = 56 * 1024
+)
+
+const (
 	stateClosed = iota
 	stateOpening
 	stateOpened
@@ -9,15 +25,6 @@ const (
 	stateListening
 	stateProcessingMessage
 	stateMessageError
-
-	stateCreated
-	stateDownloading
-	stateDownloadError
-	stateDownloaded
-	stateDeploying
-	stateDeployed
-	stateDeleted
-	stateDeployError
 )
 
 const (
@@ -29,11 +36,4 @@ const (
 	eventUnderLimit
 	eventOverLimit
 	eventChannelExpired
-
-	eventDownload
-	eventStop
-	eventDeploy
-	eventDelete
-	eventCreate
-	eventFileRemoved
 )
