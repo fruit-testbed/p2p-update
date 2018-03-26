@@ -5,19 +5,21 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/anacrolix/dht"
-	"github.com/pkg/errors"
-
 	"github.com/anacrolix/torrent"
-
+	"github.com/pkg/errors"
 	"github.com/spacemonkeygo/openssl"
-
+	"github.com/syncthing/syncthing/lib/nat"
+	"github.com/syncthing/syncthing/lib/upnp"
 	"github.com/valyala/fasthttp"
 )
 
@@ -77,12 +79,14 @@ func NewConfig(filename string) (Config, error) {
 		PublicKeyFile: "key.pub",
 		Proxy:         false,
 	}
+	oc := &cfg.Overlay
+	oc.SetDefault()
 	cfg.API.Address = "p2pupdate.sock"
 	cfg.BitTorrent.MetadataDir = "torrent/"
 	cfg.BitTorrent.DataDir = "data/"
 	cfg.BitTorrent.Tracker = DefaultTracker
 	cfg.BitTorrent.Debug = false
-	cfg.BitTorrent.Address = ":50007"
+	//cfg.BitTorrent.Address = ":50007"
 	cfg.BitTorrent.PieceLength = DefaultPieceLength
 
 	if f, err = os.Open(filename); err == nil {
@@ -136,9 +140,14 @@ func NewAgent(cfg Config) (*Agent, error) {
 			StartingNodes: dht.GlobalBootstrapAddrs,
 		},
 	}
-	if len(cfg.BitTorrent.Address) > 0 {
+
+	cfg.BitTorrent.Address = strings.Trim(cfg.BitTorrent.Address, " \t\n\r")
+	if ok, err := regexp.MatchString(`^.*:[0-9]+$`, cfg.BitTorrent.Address); ok && err == nil {
 		torrentCfg.ListenAddr = cfg.BitTorrent.Address
+	} else {
+		torrentCfg.ListenAddr = fmt.Sprintf("%s:%d", cfg.BitTorrent.Address, bindRandomPort())
 	}
+
 	if a.torrentClient, err = torrent.NewClient(torrentCfg); err != nil {
 		return nil, fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
 	}
@@ -329,4 +338,20 @@ func (a *Agent) restRequestOverlayPeers(ctx *fasthttp.RequestCtx) {
 	default:
 		ctx.Response.SetStatusCode(400)
 	}
+}
+
+func bindRandomPort() int {
+	ds := upnp.Discover(0, 2*time.Second)
+	if len(ds) == 0 {
+		return -1
+	}
+	for _, d := range ds {
+		for i := 0; i < 50; i++ {
+			port := rand.Intn(10000) + 50000
+			if _, err := d.AddPortMapping(nat.TCP, port, port, "anacrolix/torrent", 0); err == nil {
+				return port
+			}
+		}
+	}
+	return 0
 }

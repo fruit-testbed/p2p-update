@@ -135,15 +135,8 @@ type OverlayConfig struct {
 // NewOverlayConfigFromFile loads and returns agent configurations
 // from given file.
 func NewOverlayConfigFromFile(f string) (*OverlayConfig, error) {
-	cfg := OverlayConfig{
-		BindingWait:         30 * time.Second,
-		BindingMaxErrors:    10,
-		ListeningWait:       30 * time.Second,
-		ListeningMaxErrors:  10,
-		ListeningBufferSize: 64 * 1024,
-		ErrorBackoff:        10 * time.Second,
-		ChannelLifespan:     60 * time.Second,
-	}
+	cfg := &OverlayConfig{}
+	cfg.SetDefault()
 
 	if f != "" {
 		raw, err := ioutil.ReadFile(f)
@@ -154,7 +147,18 @@ func NewOverlayConfigFromFile(f string) (*OverlayConfig, error) {
 			return nil, err
 		}
 	}
-	return &cfg, nil
+	return cfg, nil
+}
+
+// SetDefault sets default config values.
+func (oc *OverlayConfig) SetDefault() {
+	oc.BindingWait = 30 * time.Second
+	oc.BindingMaxErrors = 10
+	oc.ListeningWait = 30 * time.Second
+	oc.ListeningMaxErrors = 10
+	oc.ListeningBufferSize = 64 * 1024
+	oc.ErrorBackoff = 10 * time.Second
+	oc.ChannelLifespan = 60 * time.Second
 }
 
 func (overlay *OverlayConn) createAutomata() {
