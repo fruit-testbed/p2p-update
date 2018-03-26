@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/user"
 	"sync"
 
 	"github.com/gortc/stun"
@@ -17,7 +18,7 @@ import (
 	"gopkg.in/urfave/cli.v1"
 )
 
-func adminCmd(ctx *cli.Context) error {
+func submitCmd(ctx *cli.Context) error {
 	var (
 		mi      *Metainfo
 		content []byte
@@ -38,10 +39,20 @@ func adminCmd(ctx *cli.Context) error {
 		return err
 	}
 
+	filename := ctx.String("file")
+	if _, err := os.Stat(filename); err != nil {
+		return fmt.Errorf("update file '%s' does not exist", filename)
+	}
+
+	uuid := ctx.String("uuid")
+	if len(uuid) == 0 {
+		return fmt.Errorf("UUID is empty")
+	}
+
 	mi, err = NewMetainfo(
-		ctx.String("file"),
-		ctx.String("uuid"),
-		ctx.Int("version"),
+		filename,
+		uuid,
+		int(ctx.Uint("version")),
 		cfg.BitTorrent.Tracker,
 		cfg.BitTorrent.PieceLength,
 		&key)
@@ -50,7 +61,7 @@ func adminCmd(ctx *cli.Context) error {
 	}
 
 	w := os.Stdout
-	filename := ctx.String("output")
+	filename = ctx.String("output")
 	if filename != "" {
 		f, err := os.OpenFile(filename,
 			os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
@@ -137,34 +148,42 @@ func main() {
 			Usage: "Path of config file",
 		},
 	}
+
+	homeDir := "~/"
+	if user, err := user.Current(); err == nil {
+		homeDir = user.HomeDir
+	}
+
 	app.Commands = []cli.Command{
 		{
-			Name:   "admin",
-			Usage:  "admin mode",
-			Action: adminCmd,
+			Name:   "submit",
+			Usage:  "submit a new update",
+			Action: submitCmd,
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name:  "file",
+					Name:  "file, f",
 					Usage: "Update file",
 				},
-				cli.IntFlag{
-					Name:  "version",
+				cli.UintFlag{
+					Name:  "version, v",
 					Usage: "Update version",
 				},
 				cli.StringFlag{
-					Name:  "uuid",
+					Name:  "uuid, u",
+					Value: UUIDShell,
 					Usage: "Target resource UUID",
 				},
 				cli.StringFlag{
-					Name:  "private-key",
+					Name:  "private-key, k",
+					Value: fmt.Sprintf("%s/.ssh/id_rsa", homeDir),
 					Usage: "Private key for signing",
 				},
 				cli.StringFlag{
-					Name:  "output",
-					Usage: "output torrent file",
+					Name:  "output, o",
+					Usage: "output torrent file (default: STDOUT)",
 				},
 				cli.BoolFlag{
-					Name:  "json",
+					Name:  "json, j",
 					Usage: "use JSON instead of Bencode",
 				},
 			},
