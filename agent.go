@@ -178,17 +178,15 @@ func (a *Agent) startGossip() {
 			} else {
 				b := buf[:n]
 				log.Printf("read a message from overlay: %s", string(b))
-				if u, err = NewUpdate(b); err != nil {
+				if u, err = NewUpdateFromMessage(b); err != nil {
 					log.Printf("the gossip message is not an update: %v", err)
-				} else if err = u.start(a); err != nil {
+				} else if err = u.Start(a); err != nil {
 					switch err {
 					case errUpdateIsAlreadyExist, errUpdateIsOlder:
 						log.Printf("ignored the update: %v", err)
 					default:
 						log.Printf("failed adding the torrent-file++ to TorrentClient: %v", err)
 					}
-				} else {
-					log.Printf("INFO: New update has been started: %v", u.String())
 				}
 			}
 		} else {
@@ -230,17 +228,17 @@ func (a *Agent) restRequestUpdate(ctx *fasthttp.RequestCtx) {
 
 func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
 	var (
-		update Update
-		err    error
+		u   Update
+		err error
 	)
 
-	if err = json.Unmarshal(ctx.PostBody(), &update); err != nil {
+	if err = json.Unmarshal(ctx.PostBody(), &u); err != nil {
 		log.Printf("failed to decode request update: %v", err)
 		ctx.Response.SetStatusCode(400)
-	} else if err = update.Verify(a); err != nil {
+	} else if err = u.Verify(a); err != nil {
 		log.Printf("torrent and update file do not match: %v", err)
 		ctx.Response.SetStatusCode(401)
-	} else if err = update.start(a); err != nil {
+	} else if err = u.Start(a); err != nil {
 		switch err {
 		case errUpdateIsAlreadyExist:
 			ctx.Response.SetStatusCode(208)

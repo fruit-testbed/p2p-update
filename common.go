@@ -35,4 +35,5 @@ const (
 	eventDeploy
 	eventDelete
 	eventCreate
+	eventFileRemoved
 )
