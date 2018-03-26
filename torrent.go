@@ -20,12 +20,13 @@ const (
 // Metainfo holds data of torrent file
 type Metainfo struct {
 	// Fields from standard BitTorrent protocol
-	InfoBytes    metainfo.Info   `bencode:"info,omitempty"`
+	Info         metainfo.Info   `bencode:"info,omitempty"`
 	Announce     string          `bencode:"announce,omitempty"`
 	Nodes        []metainfo.Node `bencode:"nodes,omitempty"`
 	CreationDate int64           `bencode:"creation date,omitempty,ignore_unmarshal_type_error"`
 	CreatedBy    string          `bencode:"created by,omitempty"`
 	Encoding     string          `bencode:"encoding,omitempty"`
+	Source       string          `bencode:"source,omitempty"`
 
 	// Field from BitTorrent signing proposal
 	// Reference: http://www.bittorrent.org/beps/bep_0035.html
@@ -48,20 +49,21 @@ type Signature struct {
 func NewMetainfo(filename, uuid string, ver int, tracker string,
 	pieceLength int64, privkey *openssl.PrivateKey) (*Metainfo, error) {
 	mi := Metainfo{
+		Source:       filename,
 		UUID:         uuid,
 		Version:      ver,
 		Announce:     tracker,
 		CreatedBy:    softwareName,
 		Encoding:     "UTF-8",
 		CreationDate: time.Now().Unix(),
+		Info: metainfo.Info{
+			PieceLength: pieceLength,
+		},
 	}
-	info := metainfo.Info{
-		PieceLength: pieceLength,
-	}
-	if err := info.BuildFromFilePath(filename); err != nil {
+	if err := mi.Info.BuildFromFilePath(filename); err != nil {
 		return nil, err
 	}
-	mi.InfoBytes = info
+	mi.Info.Name = fmt.Sprintf("%s-v%d-%s", mi.UUID, mi.Version, mi.Info.Name)
 	if err := mi.Sign(*privkey); err != nil {
 		return nil, err
 	}
@@ -156,7 +158,7 @@ func (mi *Metainfo) torrentMetainfo() (*metainfo.MetaInfo, error) {
 		Encoding:     mi.Encoding,
 	}
 	var err error
-	if mm.InfoBytes, err = torrentbencode.Marshal(mi.InfoBytes); err != nil {
+	if mm.InfoBytes, err = torrentbencode.Marshal(mi.Info); err != nil {
 		return nil, fmt.Errorf("failed encoding InfoBytes: %v", err)
 	}
 	return &mm, nil
