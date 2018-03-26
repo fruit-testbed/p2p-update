@@ -220,6 +220,9 @@ func (u *Update) Delete() error {
 			}
 		}
 	}
+	if _, err := os.Stat(u.metadataFilename); err == nil {
+		return os.Remove(u.metadataFilename)
+	}
 	return nil
 }
 
