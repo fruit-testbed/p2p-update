@@ -43,6 +43,10 @@ type Config struct {
 	// Public key file for verification
 	PublicKeyFile string `json:"public-key-file,omitempty"`
 
+	// Proxy=true means the agent will not deploy the update
+	// on local node
+	Proxy bool `json:"proxy,omitempty"`
+
 	// Overlay network configurations for gossip protocol
 	Overlay OverlayConfig `json:"overlay,omitempty"`
 
@@ -71,6 +75,7 @@ func NewConfig(filename string) (Config, error) {
 
 	cfg := Config{
 		PublicKeyFile: "key.pub",
+		Proxy:         false,
 	}
 	cfg.API.Address = "p2pupdate.sock"
 	cfg.BitTorrent.MetadataDir = "torrent/"

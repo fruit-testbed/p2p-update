@@ -179,7 +179,7 @@ func (u *Update) monitor(a *Agent) {
 		if u.torrent.BytesMissing() > 0 {
 			<-u.torrent.GotInfo()
 			u.torrent.DownloadAll()
-		} else if u.Deployed.Year() < 2000 {
+		} else if !a.Config.Proxy && u.Deployed.Year() < 2000 {
 			u.deploy()
 			toSave = true
 		}

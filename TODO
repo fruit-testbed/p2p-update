@@ -17,6 +17,7 @@
     [x] copy the update file to agent's `data/` directory
     [x] use format `<uuid>-v<version>-<original-filename>` as the new name of update file
     [x] modify torrent-file to apply above format
+[?] allow proxy mode -- the agent will not deploy the update on local node
 [ ] probe available port at NAT router before starting torrent client
     - see https://github.com/anacrolix/torrent/blob/5a7c4fc135eda0996079a46b43bc0ee8116d7093/portfwd.go#L12
     - the port can be picked randomly (between 10000 - 19999)
