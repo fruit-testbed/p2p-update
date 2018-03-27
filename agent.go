@@ -39,8 +39,6 @@ type Agent struct {
 
 	torrentClient *torrent.Client
 	quit          chan interface{}
-
-	torrentPort int
 }
 
 // Config specifies agent configurations.
@@ -89,7 +87,6 @@ func NewConfig(filename string) (Config, error) {
 	cfg.BitTorrent.DataDir = "data/"
 	cfg.BitTorrent.Tracker = DefaultTracker
 	cfg.BitTorrent.Debug = false
-	//cfg.BitTorrent.Address = ":50007"
 	cfg.BitTorrent.PieceLength = DefaultPieceLength
 
 	if f, err = os.Open(filename); err == nil {
@@ -122,6 +119,7 @@ func NewAgent(cfg Config) (*Agent, error) {
 	torrentCfg := &torrent.Config{
 		DataDir:       cfg.BitTorrent.DataDir,
 		Seed:          true,
+		NoDHT:         false,
 		HTTPUserAgent: softwareName,
 		Debug:         cfg.BitTorrent.Debug,
 		DHTConfig: dht.ServerConfig{
@@ -130,17 +128,20 @@ func NewAgent(cfg Config) (*Agent, error) {
 	}
 	cfg.BitTorrent.Address = strings.Trim(cfg.BitTorrent.Address, " \t\n\r")
 	if ok, err := regexp.MatchString(`^.*:[0-9]+$`, cfg.BitTorrent.Address); ok && err == nil {
-		a.torrentPort, _ = strconv.Atoi(cfg.BitTorrent.Address[strings.Index(cfg.BitTorrent.Address, ":")+1:])
+		a.Config.Overlay.torrentPorts[0], _ = strconv.Atoi(
+			cfg.BitTorrent.Address[strings.Index(cfg.BitTorrent.Address, ":")+1:])
 		strings.Split(cfg.BitTorrent.Address, ":")
 		torrentCfg.ListenAddr = cfg.BitTorrent.Address
 	} else {
-		a.torrentPort = bindRandomPort()
-		torrentCfg.ListenAddr = fmt.Sprintf("%s:%d", cfg.BitTorrent.Address, a.torrentPort)
+		a.Config.Overlay.torrentPorts[0] = bindRandomPort()
+		torrentCfg.ListenAddr = fmt.Sprintf("%s:%d", cfg.BitTorrent.Address,
+			a.Config.Overlay.torrentPorts[0])
 	}
 	if a.torrentClient, err = torrent.NewClient(torrentCfg); err != nil {
 		return nil, fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
 	}
 	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddr())
+	a.Config.Overlay.torrentPorts[1] = a.Config.Overlay.torrentPorts[0]
 
 	// start Overlay network
 	if a.Overlay, err = NewOverlayConn(a.Config.Overlay); err != nil {
@@ -173,17 +174,24 @@ func NewAgent(cfg Config) (*Agent, error) {
 
 // Stop stops the agent.
 func (a *Agent) Stop() {
-	log.Println("cleaning up agent")
-	if _, err := os.Stat(a.Config.API.Address); err == nil {
-		os.Remove(a.Config.API.Address)
+	if a.quit != nil {
+		log.Println("cleaning up agent")
+		if _, err := os.Stat(a.Config.API.Address); err == nil {
+			os.Remove(a.Config.API.Address)
+		}
+		log.Println("cleaned up agent")
+		a.quit <- 1
+		a.quit = nil
 	}
-	log.Println("cleaned up agent")
 }
 
 // Wait waits until the agent stopped.
 func (a *Agent) Wait() {
-	select {
-	case <-a.quit:
+	c := a.quit
+	if c != nil {
+		select {
+		case <-c:
+		}
 	}
 }
 
@@ -195,7 +203,6 @@ func (a *Agent) startCatchingSignals() {
 		// catch SIGINT & Ctrl-C signal, then do the cleanup
 		case os.Interrupt, os.Kill:
 			a.Stop()
-			a.quit <- 1
 		}
 	}
 }

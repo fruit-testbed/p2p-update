@@ -7,6 +7,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -66,6 +67,28 @@ func (pid *PeerID) GetFrom(m *stun.Message) error {
 		pid[i] = b
 	}
 	return nil
+}
+
+// TorrentPorts holds (external, internal) ports of torrent client.
+type TorrentPorts [2]int
+
+// AddTo adds TorrentPorts into STUN message.
+func (tp *TorrentPorts) AddTo(m *stun.Message) error {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint32(b[:4], uint32(tp[0]))
+	binary.LittleEndian.PutUint32(b[4:], uint32(tp[1]))
+	m.Add(stun.AttrEvenPort, b)
+	return nil
+}
+
+// GetFrom gets TorrentPorts from STUN message.
+func (tp *TorrentPorts) GetFrom(m *stun.Message) error {
+	b, err := m.Get(stun.AttrEvenPort)
+	if err == nil {
+		tp[0] = int(binary.LittleEndian.Uint32(b[:4]))
+		tp[1] = int(binary.LittleEndian.Uint32(b[4:]))
+	}
+	return err
 }
 
 // SessionTable is a map whose keys are Peer IDs

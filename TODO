@@ -21,11 +21,8 @@
 [x] probe available port at NAT router before starting torrent client
     - see https://github.com/anacrolix/torrent/blob/5a7c4fc135eda0996079a46b43bc0ee8116d7093/portfwd.go#L12
     - the port can be picked randomly (between 50000 - 60000)
-[ ] manually add BitTorrent peers within the same private network
-    [ ] the agent sends the port used by BitTorrent to the server
-    [ ] the server advertises the BitTorrent ports together with the STUN port for gossip
-    [ ] the agent adds the private IP/port address of the node that has the same external IP
-        to torrent's peers
+[x] the agent sends the port used by BitTorrent to the server
+[x] the server advertises session-table with BitTorrent ports
 [ ] implement fallback to TCP when UDP does not work e.g. DCS firewall
 [ ] enable multiple servers -- this allows an agent to join two difference clusters
 

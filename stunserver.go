@@ -184,8 +184,9 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
 func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) (*PeerID, error) {
 	// Extract Peer's ID, IP, and port from the message, then register it
 	var (
-		pid     = new(PeerID)
-		xorAddr stun.XORMappedAddress
+		pid          = new(PeerID)
+		xorAddr      stun.XORMappedAddress
+		torrentPorts TorrentPorts
 	)
 
 	if err := pid.GetFrom(req); err != nil {
@@ -194,20 +195,31 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) (*PeerI
 	if err := xorAddr.GetFrom(req); err != nil {
 		return nil, errors.Wrap(err, "failed getting peer internal address")
 	}
+	if err := torrentPorts.GetFrom(req); err != nil {
+		return nil, errors.Wrap(err, "failed getting torrent-ports")
+	}
 
 	s.Lock()
 	defer s.Unlock()
 	switch peer := addr.(type) {
 	case *net.UDPAddr:
 		s.peers[*pid] = []*net.UDPAddr{
-			peer,
-			&net.UDPAddr{
+			peer, // external IP/port
+			&net.UDPAddr{ // internal IP/port
 				IP:   xorAddr.IP,
 				Port: xorAddr.Port,
 			},
+			&net.UDPAddr{ // torrent external IP/port
+				IP:   peer.IP,
+				Port: torrentPorts[0],
+			},
+			&net.UDPAddr{ // torrent internal IP/port
+				IP:   xorAddr.IP,
+				Port: torrentPorts[1],
+			},
 		}
-		log.Printf("Registered peer %s[%s][%s]", pid.String(), s.peers[*pid][0].String(),
-			s.peers[*pid][1].String())
+		log.Printf("Registered peer %s[%s,%s,%s,%s]", pid.String(), s.peers[*pid][0].String(),
+			s.peers[*pid][1].String(), s.peers[*pid][2].String(), s.peers[*pid][3].String())
 	default:
 		return nil, fmt.Errorf("unknown addr: %v", addr)
 	}

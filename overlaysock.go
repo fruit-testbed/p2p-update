@@ -130,6 +130,8 @@ type OverlayConfig struct {
 	ListeningBufferSize int           `json:"listening-buffer-size"`
 	ErrorBackoff        time.Duration `json:"error-backoff"`
 	ChannelLifespan     time.Duration `json:"channel-lifespan"`
+
+	torrentPorts TorrentPorts
 }
 
 // NewOverlayConfigFromFile loads and returns agent configurations
@@ -314,6 +316,7 @@ func (overlay *OverlayConn) bindingRequestMessage() (*stun.Message, error) {
 		stun.TransactionID,
 		stun.BindingRequest,
 		xorAddr,
+		&overlay.Config.torrentPorts,
 		&overlay.ID,
 		stun.NewShortTermIntegrity(stunPassword),
 		stun.Fingerprint,

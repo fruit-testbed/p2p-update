@@ -160,21 +160,19 @@ func (u *Update) Start(a *Agent) error {
 }
 
 func (u *Update) monitor(a *Agent) {
-	for {
+	for !u.stopped {
 		time.Sleep(5 * time.Second)
 		toSave := true
 
 		u.Lock()
-		if u.stopped {
-			break
-		}
 		if !u.sent {
 			if err := u.Send(a); err != nil {
 				log.Printf("failed sending update uuid:%s version:%d : %v",
 					u.Metainfo.UUID, u.Metainfo.Version, err)
+			} else {
+				u.sent = true
+				toSave = true
 			}
-			u.sent = true
-			toSave = true
 		}
 		if u.torrent.BytesMissing() > 0 {
 			<-u.torrent.GotInfo()
