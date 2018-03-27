@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +39,8 @@ type Agent struct {
 
 	torrentClient *torrent.Client
 	quit          chan interface{}
+
+	torrentPort int
 }
 
 // Config specifies agent configurations.
@@ -109,12 +112,35 @@ func NewAgent(cfg Config) (*Agent, error) {
 		quit:    make(chan interface{}),
 	}
 
+	// create Torrent Client
 	if _, err := os.Stat(cfg.BitTorrent.DataDir); err != nil {
 		os.Mkdir(cfg.BitTorrent.DataDir, 0750)
 	}
 	if _, err := os.Stat(cfg.BitTorrent.MetadataDir); err != nil {
 		os.Mkdir(cfg.BitTorrent.MetadataDir, 0750)
 	}
+	torrentCfg := &torrent.Config{
+		DataDir:       cfg.BitTorrent.DataDir,
+		Seed:          true,
+		HTTPUserAgent: softwareName,
+		Debug:         cfg.BitTorrent.Debug,
+		DHTConfig: dht.ServerConfig{
+			StartingNodes: dht.GlobalBootstrapAddrs,
+		},
+	}
+	cfg.BitTorrent.Address = strings.Trim(cfg.BitTorrent.Address, " \t\n\r")
+	if ok, err := regexp.MatchString(`^.*:[0-9]+$`, cfg.BitTorrent.Address); ok && err == nil {
+		a.torrentPort, _ = strconv.Atoi(cfg.BitTorrent.Address[strings.Index(cfg.BitTorrent.Address, ":")+1:])
+		strings.Split(cfg.BitTorrent.Address, ":")
+		torrentCfg.ListenAddr = cfg.BitTorrent.Address
+	} else {
+		a.torrentPort = bindRandomPort()
+		torrentCfg.ListenAddr = fmt.Sprintf("%s:%d", cfg.BitTorrent.Address, a.torrentPort)
+	}
+	if a.torrentClient, err = torrent.NewClient(torrentCfg); err != nil {
+		return nil, fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
+	}
+	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddr())
 
 	// start Overlay network
 	if a.Overlay, err = NewOverlayConn(a.Config.Overlay); err != nil {
@@ -130,38 +156,17 @@ func NewAgent(cfg Config) (*Agent, error) {
 	}
 	a.PublicKey = &pub
 
-	// create Torrent Client
-	torrentCfg := &torrent.Config{
-		DataDir:       cfg.BitTorrent.DataDir,
-		Seed:          true,
-		HTTPUserAgent: softwareName,
-		Debug:         cfg.BitTorrent.Debug,
-		DHTConfig: dht.ServerConfig{
-			StartingNodes: dht.GlobalBootstrapAddrs,
-		},
-	}
-
-	cfg.BitTorrent.Address = strings.Trim(cfg.BitTorrent.Address, " \t\n\r")
-	if ok, err := regexp.MatchString(`^.*:[0-9]+$`, cfg.BitTorrent.Address); ok && err == nil {
-		torrentCfg.ListenAddr = cfg.BitTorrent.Address
-	} else {
-		torrentCfg.ListenAddr = fmt.Sprintf("%s:%d", cfg.BitTorrent.Address, bindRandomPort())
-	}
-
-	if a.torrentClient, err = torrent.NewClient(torrentCfg); err != nil {
-		return nil, fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
-	}
-	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddr())
-
-	if json, err := json.Marshal(a.Config); err == nil {
-		log.Printf("config: %s", string(json))
-	}
-
+	// load update from local database
 	a.loadUpdates()
 
 	go a.startCatchingSignals()
 	go a.startRestAPI()
 	go a.startGossip()
+
+	// dump the deployed config to log
+	if json, err := json.Marshal(a.Config); err == nil {
+		log.Printf("agent config: %s", string(json))
+	}
 
 	return a, nil
 }
