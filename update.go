@@ -263,14 +263,18 @@ func (u *Update) deploy() {
 		return
 	}
 
-	var err error
+	var (
+		apk   ApkDeployer
+		shell ShellDeployer
+		err   error
+	)
 
 	log.Printf("deploying update uuid:%s version:%d", u.Metainfo.UUID, u.Metainfo.Version)
 	switch u.Metainfo.UUID {
-	//case UUIDApk:
-	//	u.deployWithApk()
+	case UUIDApk:
+		err = u.deployWith(apk)
 	case UUIDShell:
-		err = u.deployWithShell()
+		err = u.deployWith(shell)
 	default:
 		u.deployFails++
 		log.Printf("ERROR: Unrecognized uuid:%s", u.Metainfo.UUID)
@@ -285,35 +289,47 @@ func (u *Update) deploy() {
 	}
 }
 
-/*func (u *Update) deployWithApk() {
-}*/
-
-func (u *Update) deployWithShell() error {
-	var err error
-
+func (u *Update) deployWith(d Deployer) error {
 	for _, f := range u.torrent.Files() {
 		script := filepath.Join(u.agent.Config.BitTorrent.DataDir, f.Path())
-		cmd := exec.Command("/bin/sh", script)
 		log.Printf("executing update shell uuid:%s version:%d file:%s",
 			u.Metainfo.UUID, u.Metainfo.Version, script)
-		if err = cmd.Start(); err != nil {
-			log.Printf("ERROR: failed executing update shell uuid:%s version:%d file:%s - %v",
-				u.Metainfo.UUID, u.Metainfo.Version, f.Path(), err)
-			break
-		}
-		timer := time.AfterFunc(ShellExecutionTimeout*time.Second, func() {
-			cmd.Process.Kill()
-		})
-		err = cmd.Wait()
-		timer.Stop()
-		if err == nil {
-			log.Printf("executed update shell script uuid:%s version:%d file:%s",
-				u.Metainfo.UUID, u.Metainfo.Version, f.Path())
-		} else {
+		if err := d.deploy(script, ShellExecutionTimeout*time.Second); err != nil {
 			log.Printf("ERROR: executed update shell with error uuid:%s version:%d file:%s - %v",
 				u.Metainfo.UUID, u.Metainfo.Version, f.Path(), err)
-			break
+			return err
 		}
+		log.Printf("executed update shell script uuid:%s version:%d file:%s",
+			u.Metainfo.UUID, u.Metainfo.Version, f.Path())
 	}
+	return nil
+}
+
+// Deployer is an interface of update deployer.
+type Deployer interface {
+	deploy(filename string, d time.Duration) error
+}
+
+// ShellDeployer is an update deployer using system shell.
+type ShellDeployer struct{}
+
+func (ShellDeployer) deploy(filename string, d time.Duration) error {
+	cmd := exec.Command("/bin/sh", filename)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	timer := time.AfterFunc(d, func() {
+		cmd.Process.Kill()
+	})
+	err := cmd.Wait()
+	timer.Stop()
 	return err
+}
+
+// ApkDeployer is an update deployer using APK (Alpine Package Management).
+type ApkDeployer struct{}
+
+func (ApkDeployer) deploy(filename string, d time.Duration) error {
+	// TODO: implement
+	return fmt.Errorf("not implemented")
 }
