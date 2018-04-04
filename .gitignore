@@ -23,3 +23,6 @@
 /torrent
 /metadata
 /data
+
+# example of update file
+test.sh
