@@ -313,7 +313,18 @@ type Deployer interface {
 // ShellDeployer is an update deployer using system shell.
 type ShellDeployer struct{}
 
-func (ShellDeployer) deploy(filename string, d time.Duration) error {
+func (sh ShellDeployer) deploy(filename string, d time.Duration) error {
+	st, err := os.Stat(filename)
+	if err != nil {
+		return err
+	}
+	if st.IsDir() {
+		return sh.deployDir(filename, d)
+	}
+	return sh.deployFile(filename, d)
+}
+
+func (ShellDeployer) deployFile(filename string, d time.Duration) error {
 	cmd := exec.Command("/bin/sh", filename)
 	if err := cmd.Start(); err != nil {
 		return err
@@ -324,6 +335,14 @@ func (ShellDeployer) deploy(filename string, d time.Duration) error {
 	err := cmd.Wait()
 	timer.Stop()
 	return err
+}
+
+func (sh ShellDeployer) deployDir(filename string, d time.Duration) error {
+	main := fmt.Sprintf("%s/main.sh", filename)
+	if _, err := os.Stat(main); err != nil {
+		return err
+	}
+	return sh.deployFile(main, d)
 }
 
 // ApkDeployer is an update deployer using APK (Alpine Package Management).
