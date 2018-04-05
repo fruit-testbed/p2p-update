@@ -41,8 +41,28 @@ type Agent struct {
 	quit          chan interface{}
 }
 
+// BitTorrentConfig holds configurations of BitTorrent client.
+type BitTorrentConfig struct {
+	MetadataDir string `json:"metadata-dir,omitempty"`
+	DataDir     string `json:"data-dir,omitempty"`
+	Tracker     string `json:"tracker,omitempty"`
+	Debug       bool   `json:"debug,omitempty"`
+	PieceLength int64  `json:"piece-length,omitempty"`
+	Port        int    `json:"port,omitempty"`
+
+	externalPort int
+}
+
+// APIConfig holds configurations of API service.
+type APIConfig struct {
+	Address string `json:"address,omitempty"`
+}
+
 // Config specifies agent configurations.
 type Config struct {
+	Address string `json:"address,omitempty"`
+	Server  string `json:"server,omitempty"`
+
 	// Public key file for verification
 	PublicKeyFile string `json:"public-key-file,omitempty"`
 
@@ -60,19 +80,44 @@ type Config struct {
 	BitTorrent BitTorrentConfig `json:"bittorrent,omitempty"`
 }
 
-// BitTorrentConfig holds configurations of BitTorrent client.
-type BitTorrentConfig struct {
-	MetadataDir string `json:"metadata-dir,omitempty"`
-	DataDir     string `json:"data-dir,omitempty"`
-	Tracker     string `json:"tracker,omitempty"`
-	Debug       bool   `json:"debug,omitempty"`
-	Address     string `json:"address,omitempty"`
-	PieceLength int64  `json:"piece-length,omitempty"`
+func (c *Config) torrentClientConfig() *torrent.Config {
+	addr := strings.Trim(c.Address, " \t\n\r")
+	overlayPort := 0
+	if ok, err := regexp.MatchString(`^.*:[0-9]+$`, addr); ok && err == nil {
+		i := strings.Index(addr, ":")
+		overlayPort, _ = strconv.Atoi(addr[i+1:])
+		addr = addr[0:i]
+	}
+
+	for c.BitTorrent.Port == 0 || c.BitTorrent.Port == overlayPort {
+		c.BitTorrent.Port = bindRandomPort()
+	}
+
+	return &torrent.Config{
+		ListenAddr:    fmt.Sprintf("%s:%d", addr, c.BitTorrent.Port),
+		DataDir:       c.BitTorrent.DataDir,
+		Seed:          true,
+		NoDHT:         false,
+		HTTPUserAgent: softwareName,
+		Debug:         c.BitTorrent.Debug,
+		DHTConfig: dht.ServerConfig{
+			StartingNodes: dht.GlobalBootstrapAddrs,
+		},
+	}
 }
 
-// APIConfig holds configurations of API service.
-type APIConfig struct {
-	Address string `json:"address,omitempty"`
+func (c *Config) createDirs() error {
+	if _, err := os.Stat(c.BitTorrent.DataDir); err != nil {
+		if err = os.Mkdir(c.BitTorrent.DataDir, 0750); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(c.BitTorrent.MetadataDir); err != nil {
+		if err = os.Mkdir(c.BitTorrent.MetadataDir, 0750); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // NewConfig loads configurations from given file.
@@ -82,7 +127,19 @@ func NewConfig(filename string) (Config, error) {
 		err error
 	)
 
-	cfg := Config{
+	cfg := DefaultConfig()
+
+	if f, err = os.Open(filename); err == nil {
+		err = json.NewDecoder(f).Decode(&cfg)
+	}
+
+	return cfg, err
+}
+
+// DefaultConfig returns default agent configurations.
+func DefaultConfig() Config {
+	return Config{
+		Server:        "fruit-testbed.org:3478",
 		PublicKeyFile: "key.pub",
 		Proxy:         false,
 		API: APIConfig{
@@ -95,14 +152,16 @@ func NewConfig(filename string) (Config, error) {
 			Debug:       false,
 			PieceLength: DefaultPieceLength,
 		},
+		Overlay: OverlayConfig{
+			BindingWait:         30 * time.Second,
+			BindingMaxErrors:    10,
+			ListeningWait:       30 * time.Second,
+			ListeningMaxErrors:  10,
+			ListeningBufferSize: 64 * 1024,
+			ErrorBackoff:        10 * time.Second,
+			ChannelLifespan:     60 * time.Second,
+		},
 	}
-	oc := &cfg.Overlay
-	oc.SetDefault()
-
-	if f, err = os.Open(filename); err == nil {
-		err = json.NewDecoder(f).Decode(&cfg)
-	}
-	return cfg, err
 }
 
 // NewAgent creates an Agent instance and immediately starts it.
@@ -113,45 +172,31 @@ func NewAgent(cfg Config) (*Agent, error) {
 		err error
 	)
 
+	j, _ := json.Marshal(cfg)
+	log.Printf("creating agent with config: %s", string(j))
+
 	a := &Agent{
 		Config:  &cfg,
 		Updates: make(map[string]*Update),
 		quit:    make(chan interface{}),
 	}
 
+	// create required directories if necessary
+	if err = cfg.createDirs(); err != nil {
+		return nil, err
+	}
+
 	// create Torrent Client
-	if _, err := os.Stat(cfg.BitTorrent.DataDir); err != nil {
-		os.Mkdir(cfg.BitTorrent.DataDir, 0750)
-	}
-	if _, err := os.Stat(cfg.BitTorrent.MetadataDir); err != nil {
-		os.Mkdir(cfg.BitTorrent.MetadataDir, 0750)
-	}
-	torrentCfg := &torrent.Config{
-		DataDir:       cfg.BitTorrent.DataDir,
-		Seed:          true,
-		NoDHT:         false,
-		HTTPUserAgent: softwareName,
-		Debug:         cfg.BitTorrent.Debug,
-		DHTConfig: dht.ServerConfig{
-			StartingNodes: dht.GlobalBootstrapAddrs,
-		},
-	}
-	cfg.BitTorrent.Address = strings.Trim(cfg.BitTorrent.Address, " \t\n\r")
-	if ok, err := regexp.MatchString(`^.*:[0-9]+$`, cfg.BitTorrent.Address); ok && err == nil {
-		a.Config.Overlay.torrentPorts[0], _ = strconv.Atoi(
-			cfg.BitTorrent.Address[strings.Index(cfg.BitTorrent.Address, ":")+1:])
-		strings.Split(cfg.BitTorrent.Address, ":")
-		torrentCfg.ListenAddr = cfg.BitTorrent.Address
-	} else {
-		a.Config.Overlay.torrentPorts[0] = bindRandomPort()
-		torrentCfg.ListenAddr = fmt.Sprintf("%s:%d", cfg.BitTorrent.Address,
-			a.Config.Overlay.torrentPorts[0])
-	}
-	if a.torrentClient, err = torrent.NewClient(torrentCfg); err != nil {
+	a.torrentClient, err = torrent.NewClient(cfg.torrentClientConfig())
+	if err != nil {
 		return nil, fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
 	}
 	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddr())
-	a.Config.Overlay.torrentPorts[1] = a.Config.Overlay.torrentPorts[0]
+
+	// updated Overlay config
+	a.Config.Overlay.Address = a.Config.Address
+	a.Config.Overlay.Server = a.Config.Server
+	a.Config.Overlay.torrentPorts = [2]int{a.Config.BitTorrent.Port, a.Config.BitTorrent.Port}
 
 	// start Overlay network
 	if a.Overlay, err = NewOverlayConn(a.Config.Overlay); err != nil {
@@ -174,10 +219,8 @@ func NewAgent(cfg Config) (*Agent, error) {
 	go a.startRestAPI()
 	go a.startGossip()
 
-	// dump the deployed config to log
-	if json, err := json.Marshal(a.Config); err == nil {
-		log.Printf("agent config: %s", string(json))
-	}
+	j, _ = json.Marshal(cfg)
+	log.Printf("created agent with config: %s", string(j))
 
 	return a, nil
 }
@@ -365,7 +408,7 @@ func (a *Agent) restRequestOverlayPeers(ctx *fasthttp.RequestCtx) {
 func bindRandomPort() int {
 	ds := upnp.Discover(0, 2*time.Second)
 	if len(ds) == 0 {
-		return -1
+		return rand.Intn(10000) + 50000
 	}
 	for _, d := range ds {
 		for i := 0; i < 50; i++ {
@@ -375,5 +418,5 @@ func bindRandomPort() int {
 			}
 		}
 	}
-	return 0
+	return rand.Intn(10000) + 50000
 }

@@ -7,7 +7,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"time"
@@ -58,6 +57,22 @@ func (oc *overlayUDPConn) Close() error {
 	return oc.conn.Close()
 }
 
+// OverlayConfig decribes the configurations of OverlayConn
+type OverlayConfig struct {
+	Address             string        `json:"address,omitempty"`
+	Server              string        `json:"server,omitempty"`
+	Password            string        `json:"password,omitempty"`
+	BindingWait         time.Duration `json:"binding-wait,omitempty"`
+	BindingMaxErrors    int           `json:"binding-max-errors,omitempty"`
+	ListeningWait       time.Duration `json:"listening-wait,omitempty"`
+	ListeningMaxErrors  int           `json:"listening-max-errors,omitempty"`
+	ListeningBufferSize int           `json:"listening-buffer-size,omitempty"`
+	ErrorBackoff        time.Duration `json:"error-backoff,omitempty"`
+	ChannelLifespan     time.Duration `json:"channel-lifespan,omitempty"`
+
+	torrentPorts TorrentPorts
+}
+
 // OverlayConn is an implementation of net.Conn interface for a overlay network
 // that uses STUN punching hole technique to enable peer-to-peer communications
 // for nodes behind NATs.
@@ -94,6 +109,9 @@ func NewOverlayConn(cfg OverlayConfig) (*OverlayConn, error) {
 		err           error
 	)
 
+	j, _ := json.Marshal(cfg)
+	log.Printf("creating overlayconn with config: %s", string(j))
+
 	if pid, err = LocalPeerID(); err != nil {
 		return nil, errors.Wrap(err, "failed to get local ID")
 	}
@@ -115,52 +133,11 @@ func NewOverlayConn(cfg OverlayConfig) (*OverlayConn, error) {
 	}
 	overlay.createAutomata()
 	overlay.automata.Event(eventOpen)
+
+	j, _ = json.Marshal(overlay.Config)
+	log.Printf("created overlayconn with config: %s", string(j))
+
 	return overlay, nil
-}
-
-// OverlayConfig decribes the configurations of OverlayConn
-type OverlayConfig struct {
-	Address             string        `json:"address"`
-	Server              string        `json:"server"`
-	Password            string        `json:"password"`
-	BindingWait         time.Duration `json:"binding-wait"`
-	BindingMaxErrors    int           `json:"binding-max-errors"`
-	ListeningWait       time.Duration `json:"listening-wait"`
-	ListeningMaxErrors  int           `json:"listening-max-errors"`
-	ListeningBufferSize int           `json:"listening-buffer-size"`
-	ErrorBackoff        time.Duration `json:"error-backoff"`
-	ChannelLifespan     time.Duration `json:"channel-lifespan"`
-
-	torrentPorts TorrentPorts
-}
-
-// NewOverlayConfigFromFile loads and returns agent configurations
-// from given file.
-func NewOverlayConfigFromFile(f string) (*OverlayConfig, error) {
-	cfg := &OverlayConfig{}
-	cfg.SetDefault()
-
-	if f != "" {
-		raw, err := ioutil.ReadFile(f)
-		if err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal(raw, &cfg); err != nil {
-			return nil, err
-		}
-	}
-	return cfg, nil
-}
-
-// SetDefault sets default config values.
-func (oc *OverlayConfig) SetDefault() {
-	oc.BindingWait = 30 * time.Second
-	oc.BindingMaxErrors = 10
-	oc.ListeningWait = 30 * time.Second
-	oc.ListeningMaxErrors = 10
-	oc.ListeningBufferSize = 64 * 1024
-	oc.ErrorBackoff = 10 * time.Second
-	oc.ChannelLifespan = 60 * time.Second
 }
 
 func (overlay *OverlayConn) createAutomata() {

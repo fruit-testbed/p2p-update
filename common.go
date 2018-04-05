@@ -2,7 +2,7 @@ package main
 
 const (
 	// DefaultTracker is the default BitTorrent tracker address
-	DefaultTracker = "http://0d.kebhana.mx:443/announce"
+	DefaultTracker = "https://fruit-testbed.org:443/announce"
 
 	// DefaultPieceLength is the default length of BitTorrent file-piece
 	DefaultPieceLength = 32 * 1024
