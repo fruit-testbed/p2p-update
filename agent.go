@@ -54,19 +54,25 @@ type Config struct {
 	Overlay OverlayConfig `json:"overlay,omitempty"`
 
 	// REST API configuration
-	API struct {
-		Address string `json:"address,omitempty"`
-	} `json:"api,omitempty"`
+	API APIConfig `json:"api,omitempty"`
 
 	// BitTorrent client configurations
-	BitTorrent struct {
-		MetadataDir string `json:"metadata-dir,omitempty"`
-		DataDir     string `json:"data-dir,omitempty"`
-		Tracker     string `json:"tracker,omitempty"`
-		Debug       bool   `json:"debug,omitempty"`
-		Address     string `json:"address,omitempty"`
-		PieceLength int64  `json:"piece-length,omitempty"`
-	} `json:"bittorrent,omitempty"`
+	BitTorrent BitTorrentConfig `json:"bittorrent,omitempty"`
+}
+
+// BitTorrentConfig holds configurations of BitTorrent client.
+type BitTorrentConfig struct {
+	MetadataDir string `json:"metadata-dir,omitempty"`
+	DataDir     string `json:"data-dir,omitempty"`
+	Tracker     string `json:"tracker,omitempty"`
+	Debug       bool   `json:"debug,omitempty"`
+	Address     string `json:"address,omitempty"`
+	PieceLength int64  `json:"piece-length,omitempty"`
+}
+
+// APIConfig holds configurations of API service.
+type APIConfig struct {
+	Address string `json:"address,omitempty"`
 }
 
 // NewConfig loads configurations from given file.
@@ -79,15 +85,19 @@ func NewConfig(filename string) (Config, error) {
 	cfg := Config{
 		PublicKeyFile: "key.pub",
 		Proxy:         false,
+		API: APIConfig{
+			Address: "p2pupdate.sock",
+		},
+		BitTorrent: BitTorrentConfig{
+			MetadataDir: "torrent/",
+			DataDir:     "data/",
+			Tracker:     DefaultTracker,
+			Debug:       false,
+			PieceLength: DefaultPieceLength,
+		},
 	}
 	oc := &cfg.Overlay
 	oc.SetDefault()
-	cfg.API.Address = "p2pupdate.sock"
-	cfg.BitTorrent.MetadataDir = "torrent/"
-	cfg.BitTorrent.DataDir = "data/"
-	cfg.BitTorrent.Tracker = DefaultTracker
-	cfg.BitTorrent.Debug = false
-	cfg.BitTorrent.PieceLength = DefaultPieceLength
 
 	if f, err = os.Open(filename); err == nil {
 		err = json.NewDecoder(f).Decode(&cfg)
