@@ -121,7 +121,7 @@ func serverCmd(ctx *cli.Context) error {
 		cfg.Address = addr
 	}
 	if t := ctx.Int("advertise-session"); t > 0 {
-		cfg.SessionTable.AdvertiseTime = t
+		cfg.SessionAdvertiseTime = t
 	}
 	if s, err = NewStunServer(*cfg); err != nil {
 		return err

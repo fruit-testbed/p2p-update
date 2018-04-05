@@ -18,23 +18,16 @@ import (
 
 // ServerConfig contains the server configuration parameters.
 type ServerConfig struct {
-	Address      string `json:"address"`
-	SessionTable struct {
-		AdvertiseTime int `json:"advertise-time"` // in seconds
-	} `json:"session-table"`
-	Redis struct {
-		Address  string `json:"address"`
-		Password string `json:"password"`
-	} `json:"redis"`
+	Address              string `json:"address"`
+	SessionAdvertiseTime int    `json:"session-advertise-time"` // in seconds
 }
 
 // DefaultServerConfig returns default server configurations.
 func DefaultServerConfig() *ServerConfig {
 	cfg := &ServerConfig{
-		Address: "",
+		Address:              "",
+		SessionAdvertiseTime: 60,
 	}
-	cfg.SessionTable.AdvertiseTime = 60
-	cfg.Redis.Address = "localhost:6379"
 	return cfg
 }
 
@@ -87,7 +80,7 @@ func (s *StunServer) run(wg *sync.WaitGroup) {
 	}
 
 	go func() {
-		d, _ := time.ParseDuration(fmt.Sprintf("%ds", s.cfg.SessionTable.AdvertiseTime))
+		d, _ := time.ParseDuration(fmt.Sprintf("%ds", s.cfg.SessionAdvertiseTime))
 		log.Printf("start a thread that advertises session table every %s", d)
 		for {
 			time.Sleep(d)
