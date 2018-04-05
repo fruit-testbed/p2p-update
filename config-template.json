@@ -1,15 +1,7 @@
 {
-  "public-key-file": "key.pub",
-  "bittorrent": {
-    "data-dir": "data/",
-    "metadata-dir": "metadata/",
-    "tracker": "https://fruit-testbed.org:443/announce"
+  "public-key": {
+    "filename": "fruit-key.pub"
   },
-  "api": {
-    "address": "p2pupdate.sock"
-  },
-  "overlay": {
-    "address": "192.168.0.1:9322",
-    "server": "fruit-testbed.org:3478"
-  }
+  "address": ":9323",
+  "server": "fruit-testbed.org:3478"
 }
