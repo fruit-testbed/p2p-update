@@ -58,13 +58,19 @@ type APIConfig struct {
 	Address string `json:"address,omitempty"`
 }
 
+// Key holds an encryption key file or the key (value) itself.
+type Key struct {
+	Filename string `json:"filename,omitempty"`
+	Value    string `json:"value,omitempty"`
+}
+
 // Config specifies agent configurations.
 type Config struct {
 	Address string `json:"address,omitempty"`
 	Server  string `json:"server,omitempty"`
 
 	// Public key file for verification
-	PublicKeyFile string `json:"public-key-file,omitempty"`
+	PublicKey Key `json:"public-key,omitempty"`
 
 	// Proxy=true means the agent will not deploy the update
 	// on local node
@@ -139,9 +145,11 @@ func NewConfig(filename string) (Config, error) {
 // DefaultConfig returns default agent configurations.
 func DefaultConfig() Config {
 	return Config{
-		Server:        "fruit-testbed.org:3478",
-		PublicKeyFile: "key.pub",
-		Proxy:         false,
+		Server: "fruit-testbed.org:3478",
+		PublicKey: Key{
+			Filename: "key.pub",
+		},
+		Proxy: false,
 		API: APIConfig{
 			Address: "p2pupdate.sock",
 		},
@@ -204,11 +212,11 @@ func NewAgent(cfg Config) (*Agent, error) {
 	}
 
 	// load public key file
-	if b, err = ioutil.ReadFile(cfg.PublicKeyFile); err != nil {
-		return nil, fmt.Errorf("ERROR: failed reading public key file '%s': %v", cfg.PublicKeyFile, err)
+	if b, err = ioutil.ReadFile(cfg.PublicKey.Filename); err != nil {
+		return nil, fmt.Errorf("ERROR: failed reading public key file '%s': %v", cfg.PublicKey.Filename, err)
 	}
 	if pub, err = openssl.LoadPublicKeyFromPEM(b); err != nil {
-		return nil, fmt.Errorf("ERROR: failed loading public key file '%s: %v", cfg.PublicKeyFile, err)
+		return nil, fmt.Errorf("ERROR: failed loading public key file '%s: %v", cfg.PublicKey.Filename, err)
 	}
 	a.PublicKey = &pub
 
