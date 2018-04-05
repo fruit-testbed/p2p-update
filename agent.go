@@ -7,7 +7,6 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"regexp"
@@ -21,7 +20,6 @@ import (
 	"github.com/spacemonkeygo/openssl"
 	"github.com/syncthing/syncthing/lib/nat"
 	"github.com/syncthing/syncthing/lib/upnp"
-	"github.com/valyala/fasthttp"
 )
 
 var (
@@ -37,6 +35,7 @@ type Agent struct {
 	PublicKey *openssl.PublicKey
 	Updates   map[string]*Update
 
+	api           API
 	torrentClient *torrent.Client
 	quit          chan interface{}
 }
@@ -224,7 +223,7 @@ func NewAgent(cfg Config) (*Agent, error) {
 	a.loadUpdates()
 
 	go a.startCatchingSignals()
-	go a.startRestAPI()
+	go a.api.Start()
 	go a.startGossip()
 
 	j, _ = json.Marshal(cfg)
@@ -301,12 +300,6 @@ func (a *Agent) startGossip() {
 	}
 }
 
-func (a *Agent) startRestAPI() {
-	if err := fasthttp.ListenAndServeUNIX(a.Config.API.Address, 0600, a.restRequestHandler); err != nil {
-		log.Fatalf("Error in startRestApi: %v", err)
-	}
-}
-
 // loadUpdates loads existing updates from local database (or files).
 func (a *Agent) loadUpdates() {
 	log.Println("Loading updates from local database")
@@ -332,85 +325,6 @@ func (a *Agent) loadUpdates() {
 		u.Start(a)
 	}
 	log.Printf("Loaded %d updates", len(a.Updates))
-}
-
-func (a *Agent) restRequestHandler(ctx *fasthttp.RequestCtx) {
-	if string(ctx.Host()) != "v1" {
-		ctx.Response.SetStatusCode(400)
-		return
-	}
-	switch string(ctx.Path()) {
-	case "/overlay/peers":
-		a.restRequestOverlayPeers(ctx)
-	case "/update":
-		a.restRequestUpdate(ctx)
-	default:
-		ctx.Response.SetStatusCode(400)
-	}
-}
-
-func (a *Agent) restRequestUpdate(ctx *fasthttp.RequestCtx) {
-	switch string(ctx.Method()) {
-	case "POST":
-		a.restRequestPostUpdate(ctx)
-	default:
-		ctx.Response.SetStatusCode(400)
-	}
-}
-
-func (a *Agent) restRequestPostUpdate(ctx *fasthttp.RequestCtx) {
-	var (
-		u   Update
-		err error
-	)
-
-	if err = json.Unmarshal(ctx.PostBody(), &u); err != nil {
-		log.Printf("failed to decode request update: %v", err)
-		ctx.Response.SetStatusCode(400)
-		return
-	}
-	u.agent = a
-
-	if _, err = os.Stat(u.Source); err == nil {
-		dest := filepath.Join(a.Config.BitTorrent.DataDir, u.Metainfo.Info.Name)
-		cmd := exec.Command("cp", "-af", u.Source, dest)
-		if err := cmd.Run(); err != nil {
-			log.Printf("failed copying update file from '%s' to '%s': %v",
-				u.Source, dest, err)
-			ctx.Response.SetStatusCode(403)
-			return
-		}
-	} else {
-		log.Printf("source file '%s' does not exist", u.Source)
-		ctx.Response.SetStatusCode(404)
-		return
-	}
-
-	if err = u.Start(a); err != nil {
-		switch err {
-		case errUpdateIsAlreadyExist:
-			ctx.Response.SetStatusCode(208)
-		case errUpdateVerificationFailed:
-			ctx.Response.SetStatusCode(401)
-		case errUpdateIsOlder:
-			ctx.Response.SetStatusCode(406)
-		default:
-			ctx.Response.SetStatusCode(500)
-		}
-		log.Printf("failed to activating the torrent: %v", err)
-	} else {
-		ctx.Response.SetStatusCode(200)
-	}
-}
-
-func (a *Agent) restRequestOverlayPeers(ctx *fasthttp.RequestCtx) {
-	switch string(ctx.Method()) {
-	case "GET":
-		ctx.Response.Header.Set("Content-Type", "application/json")
-		ctx.Response.SetBody(a.Overlay.peers.JSON())
-	default:
-		ctx.Response.SetStatusCode(400)
-	}
 }
 
 func bindRandomPort() int {
