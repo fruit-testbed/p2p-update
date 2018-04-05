@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/anacrolix/dht"
@@ -30,11 +31,13 @@ var (
 
 // Agent is a representation of update agent.
 type Agent struct {
+	sync.RWMutex
+
 	Config    *Config
 	Overlay   *OverlayConn
 	PublicKey *openssl.PublicKey
-	Updates   map[string]*Update
 
+	updates       map[string]*Update
 	api           API
 	torrentClient *torrent.Client
 	quit          chan interface{}
@@ -184,9 +187,10 @@ func NewAgent(cfg Config) (*Agent, error) {
 
 	a := &Agent{
 		Config:  &cfg,
-		Updates: make(map[string]*Update),
+		updates: make(map[string]*Update),
 		quit:    make(chan interface{}),
 	}
+	a.api.agent = a
 
 	// create required directories if necessary
 	if err = cfg.createDirs(); err != nil {
@@ -324,7 +328,7 @@ func (a *Agent) loadUpdates() {
 		}
 		u.Start(a)
 	}
-	log.Printf("Loaded %d updates", len(a.Updates))
+	log.Printf("Loaded %d updates", len(a.updates))
 }
 
 func bindRandomPort() int {
@@ -341,4 +345,45 @@ func bindRandomPort() int {
 		}
 	}
 	return rand.Intn(10000) + 50000
+}
+
+func (a *Agent) addUpdate(u *Update) error {
+	a.Lock()
+	defer a.Unlock()
+	uuid := u.Metainfo.UUID
+	if _, ok := a.updates[uuid]; ok {
+		return fmt.Errorf("an update with uuid:%s is already exist", uuid)
+	}
+	a.updates[uuid] = u
+	return nil
+}
+
+func (a *Agent) deleteUpdate(uuid string) *Update {
+	a.Lock()
+	defer a.Unlock()
+	u, ok := a.updates[uuid]
+	delete(a.updates, uuid)
+	if ok {
+		return u
+	}
+	return nil
+}
+
+func (a *Agent) getUpdate(uuid string) *Update {
+	a.RLock()
+	defer a.RUnlock()
+	if u, ok := a.updates[uuid]; ok {
+		return u
+	}
+	return nil
+}
+
+func (a *Agent) getUpdateUUIDs() []string {
+	a.RLock()
+	defer a.RUnlock()
+	keys := make([]string, 0, len(a.updates))
+	for k := range a.updates {
+		keys = append(keys, k)
+	}
+	return keys
 }

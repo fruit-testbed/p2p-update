@@ -1,13 +1,26 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"time"
 
 	"github.com/valyala/fasthttp"
+)
+
+var (
+	rUpdateURL = regexp.MustCompile("^/update/[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$")
+
+	strPOST            = []byte("POST")
+	strGET             = []byte("GET")
+	strDELETE          = []byte("DELETE")
+	strContentType     = []byte("Content-Type")
+	strApplicationJSON = []byte("application/json")
 )
 
 // API provides REST API implementations of the agent.
@@ -24,14 +37,16 @@ func (a *API) Start() {
 }
 
 func (a *API) requestHandler(ctx *fasthttp.RequestCtx) {
-	if string(ctx.Host()) != "v1" {
+	if bytes.Compare(ctx.Host(), []byte("v1")) != 0 {
 		ctx.Response.SetStatusCode(400)
 		return
 	}
-	switch string(ctx.Path()) {
-	case "/overlay/peers":
+	switch {
+	case bytes.Compare(ctx.Path(), []byte("/overlay/peers")) == 0:
 		a.requestOverlayPeers(ctx)
-	case "/update":
+	case rUpdateURL.Match(ctx.Path()):
+		a.requestUpdateWithParam(ctx)
+	case bytes.Compare(ctx.Path(), []byte("/update")) == 0:
 		a.requestUpdate(ctx)
 	default:
 		ctx.Response.SetStatusCode(400)
@@ -39,12 +54,46 @@ func (a *API) requestHandler(ctx *fasthttp.RequestCtx) {
 }
 
 func (a *API) requestUpdate(ctx *fasthttp.RequestCtx) {
-	switch string(ctx.Method()) {
-	case "POST":
+	switch {
+	case bytes.Compare(ctx.Method(), strPOST) == 0:
 		a.requestPostUpdate(ctx)
+	case bytes.Compare(ctx.Method(), strGET) == 0:
+		doJSONWrite(ctx, 200, a.agent.getUpdateUUIDs())
 	default:
 		ctx.Response.SetStatusCode(400)
 	}
+}
+
+func (a *API) requestUpdateWithParam(ctx *fasthttp.RequestCtx) {
+	switch {
+	case bytes.Compare(ctx.Method(), strGET) == 0:
+		a.requestGetUpdateWithUUID(ctx, ctx.Path()[8:])
+	case bytes.Compare(ctx.Method(), strDELETE) == 0:
+		a.requestDeleteUpdate(ctx, ctx.Path()[8:])
+	default:
+		ctx.Response.SetStatusCode(400)
+	}
+}
+
+func (a *API) requestGetUpdateWithUUID(ctx *fasthttp.RequestCtx, uuid []byte) {
+	update := a.agent.getUpdate(string(uuid))
+	if update == nil {
+		ctx.Response.SetStatusCode(404)
+		return
+	}
+	doJSONWrite(ctx, 200, update)
+}
+
+func (a *API) requestDeleteUpdate(ctx *fasthttp.RequestCtx, uuid []byte) {
+	if update := a.agent.deleteUpdate(string(uuid)); update != nil {
+		update.Stop()
+		if err := update.Delete(); err != nil {
+			log.Printf("failed deleting update uuid:%s - %v", uuid, err)
+			ctx.Response.SetStatusCode(500)
+			return
+		}
+	}
+	ctx.Response.SetStatusCode(200)
 }
 
 func (a *API) requestPostUpdate(ctx *fasthttp.RequestCtx) {
@@ -93,11 +142,22 @@ func (a *API) requestPostUpdate(ctx *fasthttp.RequestCtx) {
 }
 
 func (a *API) requestOverlayPeers(ctx *fasthttp.RequestCtx) {
-	switch string(ctx.Method()) {
-	case "GET":
+	switch {
+	case bytes.Compare(ctx.Method(), strGET) == 0:
 		ctx.Response.Header.Set("Content-Type", "application/json")
 		ctx.Response.SetBody(a.agent.Overlay.peers.JSON())
 	default:
 		ctx.Response.SetStatusCode(400)
+	}
+}
+
+func doJSONWrite(ctx *fasthttp.RequestCtx, code int, obj interface{}) {
+	ctx.Response.Header.SetCanonical(strContentType, strApplicationJSON)
+	ctx.Response.SetStatusCode(code)
+	start := time.Now()
+	if err := json.NewEncoder(ctx).Encode(obj); err != nil {
+		elapsed := time.Since(start)
+		log.Printf("elapsed:%v - %v", elapsed, err)
+		ctx.Error(err.Error(), fasthttp.StatusInternalServerError)
 	}
 }

@@ -43,22 +43,23 @@ const (
 type Update struct {
 	sync.RWMutex
 
-	Metainfo Metainfo  `json:"metainfo,omitempty"`
-	Deployed time.Time `json:"deployed,omitempty"`
-	Source   string    `json:"source,omitempty"`
+	Metainfo    Metainfo  `json:"metainfo"`
+	Deployed    time.Time `json:"deployed"`
+	Source      string    `json:"source"`
+	Stopped     bool      `json:"stopped"`
+	Sent        bool      `json:"sent"`
+	DeployFails int       `json:"deploy-fails"`
+	Missing     int64     `json:"missing"`
 
-	torrent     *torrent.Torrent
-	stopped     bool
-	sent        bool
-	deployFails int
-	agent       *Agent
+	torrent *torrent.Torrent
+	agent   *Agent
 }
 
 // NewUpdateFromMessage creates an Update instance from a byte-array of torrent++.
 func NewUpdateFromMessage(b []byte, a *Agent) (*Update, error) {
 	u := Update{
-		stopped: true,
-		sent:    false,
+		Stopped: true,
+		Sent:    false,
 		agent:   a,
 	}
 	if err := bencode.DecodeBytes(b, &u.Metainfo); err != nil {
@@ -70,8 +71,8 @@ func NewUpdateFromMessage(b []byte, a *Agent) (*Update, error) {
 // LoadUpdateFromFile loads Update description from given filename.
 func LoadUpdateFromFile(filename string, a *Agent) (*Update, error) {
 	u := Update{
-		stopped: true,
-		sent:    false,
+		Stopped: true,
+		Sent:    false,
 		agent:   a,
 	}
 	f, err := os.Open(filename)
@@ -125,22 +126,22 @@ func (u *Update) Start(a *Agent) error {
 
 	// Remove existing update that has the same UUID. If the existing update
 	// is newer, then return an error.
-	if cu, ok := a.Updates[u.Metainfo.UUID]; ok {
-		if cu.Metainfo.Version > u.Metainfo.Version {
+	if old := a.deleteUpdate(u.Metainfo.UUID); old != nil {
+		if old.Metainfo.Version > u.Metainfo.Version {
 			return errUpdateIsOlder
-		} else if cu.Metainfo.Version == u.Metainfo.Version {
+		} else if old.Metainfo.Version == u.Metainfo.Version {
 			return errUpdateIsAlreadyExist
 		}
-		cu.Stop()
-		if err = cu.Delete(); err != nil {
+		old.Stop()
+		if err = old.Delete(); err != nil {
 			log.Printf("WARNING: failed to delete update uuid:%s version:%d : %v",
-				cu.Metainfo.UUID, cu.Metainfo.Version, err)
+				old.Metainfo.UUID, old.Metainfo.Version, err)
 		}
 	} else {
 		log.Printf("older update of uuid:%s does not exist", u.Metainfo.UUID)
 	}
 
-	a.Updates[u.Metainfo.UUID] = u
+	a.addUpdate(u)
 
 	// activate torrent
 	log.Printf("starting update: %s", u.String())
@@ -150,7 +151,7 @@ func (u *Update) Start(a *Agent) error {
 	if u.torrent, err = a.torrentClient.AddTorrent(mi); err != nil {
 		return fmt.Errorf("failed adding torrent: %v", err)
 	}
-	u.stopped = false
+	u.Stopped = false
 	log.Printf("started update: %s", u.String())
 
 	// spawn a go-routine that monitors torrent's status
@@ -160,21 +161,25 @@ func (u *Update) Start(a *Agent) error {
 }
 
 func (u *Update) monitor(a *Agent) {
-	for !u.stopped {
+	toSave := true
+	for {
 		time.Sleep(5 * time.Second)
-		toSave := true
 
 		u.Lock()
-		if !u.sent {
+		if u.Stopped || u.torrent == nil {
+			break
+		}
+		if !u.Sent {
 			if err := u.Send(a); err != nil {
 				log.Printf("failed sending update uuid:%s version:%d : %v",
 					u.Metainfo.UUID, u.Metainfo.Version, err)
 			} else {
-				u.sent = true
+				u.Sent = true
 				toSave = true
 			}
 		}
-		if u.torrent.BytesMissing() > 0 {
+		u.Missing = u.torrent.BytesMissing()
+		if u.Missing > 0 {
 			<-u.torrent.GotInfo()
 			u.torrent.DownloadAll()
 		} else if !a.Config.Proxy && u.Deployed.Year() < 2000 {
@@ -196,10 +201,11 @@ func (u *Update) Stop() {
 	u.Lock()
 	defer u.Unlock()
 	log.Printf("stopping update: %v", u.String())
-	u.stopped = true
+	u.Stopped = true
 	if u.torrent != nil {
 		u.torrent.Drop()
 		<-u.torrent.Closed()
+		u.torrent = nil
 	}
 	log.Printf("stopped update: %v", u.String())
 }
@@ -209,7 +215,7 @@ func (u *Update) Delete() error {
 	u.Lock()
 	defer u.Unlock()
 	log.Printf("deleting update: %v", u.String())
-	if !u.stopped {
+	if !u.Stopped {
 		return fmt.Errorf("update has not been stopped")
 	}
 	if u.torrent != nil {
@@ -257,9 +263,9 @@ func (u *Update) String() string {
 }
 
 func (u *Update) deploy() {
-	if u.deployFails > DeployFailsLimit {
+	if u.DeployFails > DeployFailsLimit {
 		log.Printf("Too many deployment failures:%d uuid:%s version:%d",
-			u.deployFails, u.Metainfo.UUID, u.Metainfo.Version)
+			u.DeployFails, u.Metainfo.UUID, u.Metainfo.Version)
 		return
 	}
 
@@ -276,15 +282,15 @@ func (u *Update) deploy() {
 	case UUIDShell:
 		err = u.deployWith(shell)
 	default:
-		u.deployFails++
+		u.DeployFails++
 		log.Printf("ERROR: Unrecognized uuid:%s", u.Metainfo.UUID)
 		return
 	}
 
 	if err != nil {
-		u.deployFails++
+		u.DeployFails++
 	} else {
-		u.deployFails = 0
+		u.DeployFails = 0
 		u.Deployed = time.Now()
 	}
 }
