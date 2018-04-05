@@ -113,14 +113,17 @@ func serverCmd(ctx *cli.Context) error {
 	var (
 		wg  sync.WaitGroup
 		s   *StunServer
-		cfg *ServerConfig
 		err error
 	)
 
-	if cfg, err = NewServerConfigFromFile(ctx.GlobalString("config-file")); err != nil {
-		return err
+	cfg := DefaultServerConfig()
+	if addr := ctx.String("address"); addr != "" {
+		cfg.Address = addr
 	}
-	if s, err = NewStunServer(ctx.String("address"), *cfg); err != nil {
+	if t := ctx.Int("advertise-session"); t > 0 {
+		cfg.SessionTable.AdvertiseTime = t
+	}
+	if s, err = NewStunServer(*cfg); err != nil {
 		return err
 	}
 	wg.Add(1)
@@ -255,8 +258,13 @@ func main() {
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:  "address",
-					Value: "0.0.0.0:3478",
+					Value: ":3478",
 					Usage: "Address which the server will listen to",
+				},
+				cli.IntFlag{
+					Name:  "advertise-session",
+					Value: 60,
+					Usage: "Session table advertisement time (in second)",
 				},
 			},
 		},

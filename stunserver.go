@@ -7,7 +7,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"sync"
@@ -17,45 +16,26 @@ import (
 	"github.com/pkg/errors"
 )
 
-const (
-	defaultSessionTableAdvertiseDuration = 60 * time.Second
-)
-
 // ServerConfig contains the server configuration parameters.
 type ServerConfig struct {
 	Address      string `json:"address"`
 	SessionTable struct {
-		AdvertiseDuration time.Duration `json:"advertise-duration"`
+		AdvertiseTime int `json:"advertise-time"` // in seconds
 	} `json:"session-table"`
 	Redis struct {
-		Address string `json:"address"`
+		Address  string `json:"address"`
+		Password string `json:"password"`
 	} `json:"redis"`
 }
 
-// NewServerConfigFromFile loads and returns configurations from given JSON
-// file.
-func NewServerConfigFromFile(f string) (*ServerConfig, error) {
-	var cfg ServerConfig
-
-	if f != "" {
-		raw, err := ioutil.ReadFile(f)
-		if err != nil {
-			return nil, err
-		}
-		if err = json.Unmarshal(raw, &cfg); err != nil {
-			return nil, err
-		}
+// DefaultServerConfig returns default server configurations.
+func DefaultServerConfig() *ServerConfig {
+	cfg := &ServerConfig{
+		Address: "",
 	}
-	return &cfg, nil
-}
-
-func (cfg *ServerConfig) check() {
-	if cfg.SessionTable.AdvertiseDuration == 0 {
-		cfg.SessionTable.AdvertiseDuration = defaultSessionTableAdvertiseDuration
-	}
-	if cfg.Redis.Address == "" {
-		cfg.Redis.Address = "127.0.0.1:6379"
-	}
+	cfg.SessionTable.AdvertiseTime = 60
+	cfg.Redis.Address = "localhost:6379"
+	return cfg
 }
 
 // StunServer is a STUN server implementation for multicast messaging system
@@ -68,29 +48,33 @@ type StunServer struct {
 }
 
 // NewStunServer returns an instance of StunServer
-func NewStunServer(address string, cfg ServerConfig) (*StunServer, error) {
+func NewStunServer(cfg ServerConfig) (*StunServer, error) {
 	var (
 		id   *PeerID
 		addr *net.UDPAddr
 		err  error
 	)
 
-	cfg.check()
-	if cfg.Address == "" {
-		cfg.Address = address
-	}
+	j, _ := json.Marshal(cfg)
+	log.Printf("creating server with config: %s", string(j))
+
 	if addr, err = net.ResolveUDPAddr("udp", cfg.Address); err != nil {
-		return nil, errors.Wrapf(err, "failed resolving address %s", address)
+		return nil, errors.Wrapf(err, "failed resolving address %s", cfg.Address)
 	}
 	if id, err = LocalPeerID(); err != nil {
 		return nil, errors.Wrap(err, "Cannot get local ID")
 	}
-	return &StunServer{
+	s := &StunServer{
 		Addr:  addr,
 		ID:    *id,
 		peers: make(SessionTable),
 		cfg:   &cfg,
-	}, nil
+	}
+
+	j, _ = json.Marshal(s.cfg)
+	log.Printf("created server with config: %s", string(j))
+
+	return s, nil
 }
 
 func (s *StunServer) run(wg *sync.WaitGroup) {
@@ -103,10 +87,10 @@ func (s *StunServer) run(wg *sync.WaitGroup) {
 	}
 
 	go func() {
-		log.Printf("start a thread that advertises session table every %ss",
-			s.cfg.SessionTable.AdvertiseDuration)
+		d, _ := time.ParseDuration(fmt.Sprintf("%ds", s.cfg.SessionTable.AdvertiseTime))
+		log.Printf("start a thread that advertises session table every %s", d)
 		for {
-			time.Sleep(s.cfg.SessionTable.AdvertiseDuration)
+			time.Sleep(d)
 			if err := s.advertiseSessionTable(conn); err != nil {
 				log.Println(err)
 			}
