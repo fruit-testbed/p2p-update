@@ -112,7 +112,7 @@ func submitCmd(ctx *cli.Context) error {
 func serverCmd(ctx *cli.Context) error {
 	var (
 		wg  sync.WaitGroup
-		s   *StunServer
+		s   *Server
 		err error
 	)
 
@@ -123,7 +123,7 @@ func serverCmd(ctx *cli.Context) error {
 	if t := ctx.Int("advertise-session"); t > 0 {
 		cfg.SessionAdvertiseTime = t
 	}
-	if s, err = NewStunServer(*cfg); err != nil {
+	if s, err = NewServer(*cfg); err != nil {
 		return err
 	}
 	wg.Add(1)

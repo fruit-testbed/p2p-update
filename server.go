@@ -31,8 +31,8 @@ func DefaultServerConfig() *ServerConfig {
 	return cfg
 }
 
-// StunServer is a STUN server implementation for multicast messaging system
-type StunServer struct {
+// Server is a STUN server implementation for multicast messaging system
+type Server struct {
 	sync.RWMutex
 	Addr  *net.UDPAddr
 	ID    PeerID
@@ -40,8 +40,8 @@ type StunServer struct {
 	cfg   *ServerConfig
 }
 
-// NewStunServer returns an instance of StunServer
-func NewStunServer(cfg ServerConfig) (*StunServer, error) {
+// NewServer returns an instance of Server
+func NewServer(cfg ServerConfig) (*Server, error) {
 	var (
 		id   *PeerID
 		addr *net.UDPAddr
@@ -57,7 +57,7 @@ func NewStunServer(cfg ServerConfig) (*StunServer, error) {
 	if id, err = LocalPeerID(); err != nil {
 		return nil, errors.Wrap(err, "Cannot get local ID")
 	}
-	s := &StunServer{
+	s := &Server{
 		Addr:  addr,
 		ID:    *id,
 		peers: make(SessionTable),
@@ -70,7 +70,7 @@ func NewStunServer(cfg ServerConfig) (*StunServer, error) {
 	return s, nil
 }
 
-func (s *StunServer) run(wg *sync.WaitGroup) {
+func (s *Server) run(wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	conn, err := net.ListenUDP("udp", s.Addr)
@@ -96,7 +96,7 @@ func (s *StunServer) run(wg *sync.WaitGroup) {
 	}
 }
 
-func (s *StunServer) serve(c net.PacketConn) error {
+func (s *Server) serve(c net.PacketConn) error {
 	var (
 		res = new(stun.Message)
 		req = new(stun.Message)
@@ -110,7 +110,7 @@ func (s *StunServer) serve(c net.PacketConn) error {
 	}
 }
 
-func (s *StunServer) serveConn(c net.PacketConn, res, req *stun.Message) error {
+func (s *Server) serveConn(c net.PacketConn, res, req *stun.Message) error {
 	if c == nil {
 		return nil
 	}
@@ -141,7 +141,7 @@ func (s *StunServer) serveConn(c net.PacketConn, res, req *stun.Message) error {
 	return err
 }
 
-func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Message) (*PeerID, error) {
+func (s *Server) processMessage(addr net.Addr, msg []byte, req, res *stun.Message) (*PeerID, error) {
 	if !stun.IsMessage(msg) {
 		return nil, errNonSTUNMessage
 	}
@@ -158,7 +158,7 @@ func (s *StunServer) processMessage(addr net.Addr, msg []byte, req, res *stun.Me
 	return nil, fmt.Errorf("message type is not STUN binding")
 }
 
-func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) (*PeerID, error) {
+func (s *Server) registerPeer(addr net.Addr, req, res *stun.Message) (*PeerID, error) {
 	// Extract Peer's ID, IP, and port from the message, then register it
 	var (
 		pid          = new(PeerID)
@@ -214,7 +214,7 @@ func (s *StunServer) registerPeer(addr net.Addr, req, res *stun.Message) (*PeerI
 	)
 }
 
-func (s *StunServer) advertiseNewPeer(pid *PeerID, addrs []*net.UDPAddr, c net.PacketConn) {
+func (s *Server) advertiseNewPeer(pid *PeerID, addrs []*net.UDPAddr, c net.PacketConn) {
 	msg, err := stun.Build(
 		stun.TransactionID,
 		stunBindingIndication,
@@ -242,7 +242,7 @@ func (s *StunServer) advertiseNewPeer(pid *PeerID, addrs []*net.UDPAddr, c net.P
 	}
 }
 
-func (s *StunServer) advertiseSessionTable(c net.PacketConn) error {
+func (s *Server) advertiseSessionTable(c net.PacketConn) error {
 	s.RLock()
 	defer s.RUnlock()
 	msg, err := stun.Build(
