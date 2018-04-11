@@ -163,8 +163,8 @@ func DefaultConfig() Config {
 			PieceLength: DefaultPieceLength,
 		},
 		Overlay: OverlayConfig{
-			BindingWait:         30 * time.Second,
-			BindingMaxErrors:    10,
+			BindingWait:         10 * time.Second,
+			BindingMaxErrors:    5,
 			ListeningWait:       30 * time.Second,
 			ListeningMaxErrors:  10,
 			ListeningBufferSize: 64 * 1024,
@@ -280,26 +280,23 @@ func (a *Agent) startGossip() {
 	)
 
 	for {
-		if a != nil {
-			if n, err = a.Overlay.Read(buf[:]); err != nil {
-				log.Println("failed reading from overlay", err)
-			} else {
-				b := buf[:n]
-				log.Printf("read a message from overlay: %s", string(b))
-				if u, err = NewUpdateFromMessage(b, a); err != nil {
-					log.Printf("the gossip message is not an update: %v", err)
-				} else if err = u.Start(a); err != nil {
-					switch err {
-					case errUpdateIsAlreadyExist, errUpdateIsOlder, errUpdateVerificationFailed:
-						log.Printf("ignored the update: %v", err)
-					default:
-						log.Printf("failed adding the torrent-file++ to TorrentClient: %v", err)
-					}
+		if a == nil || !a.Overlay.Ready() {
+			time.Sleep(time.Second)
+		} else if n, err = a.Overlay.Read(buf[:]); err != nil {
+			log.Println("failed reading from overlay", err)
+		} else {
+			b := buf[:n]
+			log.Printf("read a message from overlay: %s", string(b))
+			if u, err = NewUpdateFromMessage(b, a); err != nil {
+				log.Printf("the gossip message is not an update: %v", err)
+			} else if err = u.Start(a); err != nil {
+				switch err {
+				case errUpdateIsAlreadyExist, errUpdateIsOlder, errUpdateVerificationFailed:
+					log.Printf("ignored the update: %v", err)
+				default:
+					log.Printf("failed adding the torrent-file++ to TorrentClient: %v", err)
 				}
 			}
-		} else {
-			log.Println("WARNING: No overlay is available!")
-			time.Sleep(5 * time.Second)
 		}
 	}
 }
