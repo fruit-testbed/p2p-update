@@ -50,7 +50,7 @@ func submitCmd(ctx *cli.Context) error {
 		ver,
 		ctx.String("tracker"),
 		int64(ctx.Uint64("piece-length")),
-		&key)
+		key)
 	if err != nil {
 		return err
 	}

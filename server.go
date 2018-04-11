@@ -6,9 +6,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -16,8 +16,6 @@ import (
 	"time"
 
 	"github.com/valyala/fasthttp"
-
-	"github.com/spacemonkeygo/openssl"
 
 	"github.com/gortc/stun"
 	"github.com/pkg/errors"
@@ -55,7 +53,7 @@ type Server struct {
 	cfg   *ServerConfig
 
 	udpConn   *net.UDPConn
-	publicKey openssl.PublicKey
+	publicKey *rsa.PublicKey
 
 	updates      map[string]*Metainfo
 	lastModified time.Time
@@ -67,8 +65,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	var (
 		id   *PeerID
 		addr *net.UDPAddr
-		pub  openssl.PublicKey
-		b    []byte
+		pub  *rsa.PublicKey
 		err  error
 	)
 
@@ -83,11 +80,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	}
 
 	// load public key file
-	if b, err = ioutil.ReadFile(cfg.PublicKey.Filename); err != nil {
-		return nil, fmt.Errorf("ERROR: failed reading public key file '%s': %v",
-			cfg.PublicKey.Filename, err)
-	}
-	if pub, err = openssl.LoadPublicKeyFromPEM(b); err != nil {
+	if pub, err = LoadPublicKey(cfg.PublicKey.Filename); err != nil {
 		return nil, fmt.Errorf("ERROR: failed loading public key file '%s: %v",
 			cfg.PublicKey.Filename, err)
 	}

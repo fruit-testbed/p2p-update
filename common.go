@@ -3,16 +3,17 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/spacemonkeygo/openssl"
 
 	"github.com/gortc/stun"
 	"github.com/pkg/errors"
@@ -289,29 +290,35 @@ func ExecEvery(t time.Duration, f func()) chan struct{} {
 }
 
 // LoadPrivateKey reads and returns a private-key from given filename.
-func LoadPrivateKey(filename string) (openssl.PrivateKey, error) {
-	var (
-		key openssl.PrivateKey
-		b   []byte
-		err error
-	)
-
-	if b, err = ioutil.ReadFile(filename); err == nil {
-		key, err = openssl.LoadPrivateKeyFromPEM(b)
+func LoadPrivateKey(filename string) (*rsa.PrivateKey, error) {
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed reading file %s: %v", filename, err)
 	}
-	return key, err
+	block, _ := pem.Decode(b)
+	if block == nil || block.Type != "RSA PRIVATE KEY" {
+		return nil, fmt.Errorf("failed decoding public key in file %s", filename)
+	}
+	return x509.ParsePKCS1PrivateKey(block.Bytes)
 }
 
 // LoadPublicKey reads and returns a public-key from given filename.
-func LoadPublicKey(filename string) (openssl.PublicKey, error) {
-	var (
-		key openssl.PublicKey
-		b   []byte
-		err error
-	)
-
-	if b, err = ioutil.ReadFile(filename); err == nil {
-		key, err = openssl.LoadPublicKeyFromPEM(b)
+func LoadPublicKey(filename string) (*rsa.PublicKey, error) {
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed reading file %s: %v", filename, err)
 	}
-	return key, err
+	block, _ := pem.Decode(b)
+	if block == nil || block.Type != "PUBLIC KEY" {
+		return nil, fmt.Errorf("failed decoding public key in file %s", filename)
+	}
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing public key in file %s: %v", filename, err)
+	}
+	switch pub := pub.(type) {
+	case *rsa.PublicKey:
+		return pub, nil
+	}
+	return nil, fmt.Errorf("key type in file %s is not RSA", filename)
 }

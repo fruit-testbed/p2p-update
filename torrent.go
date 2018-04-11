@@ -1,6 +1,10 @@
 package main
 
 import (
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"os"
@@ -8,7 +12,6 @@ import (
 
 	torrentbencode "github.com/anacrolix/torrent/bencode"
 	"github.com/anacrolix/torrent/metainfo"
-	"github.com/spacemonkeygo/openssl"
 	"github.com/zeebo/bencode"
 )
 
@@ -41,7 +44,7 @@ type Signature struct {
 
 // NewMetainfo creates a new Metainfo instance (torrent file) of given 'filePath'.
 func NewMetainfo(filename, uuid string, ver uint64, tracker string,
-	pieceLength int64, privkey *openssl.PrivateKey) (*Metainfo, error) {
+	pieceLength int64, privkey *rsa.PrivateKey) (*Metainfo, error) {
 	mi := Metainfo{
 		UUID:         uuid,
 		Version:      ver,
@@ -57,7 +60,7 @@ func NewMetainfo(filename, uuid string, ver uint64, tracker string,
 		return nil, err
 	}
 	mi.Info.Name = fmt.Sprintf("%s-v%d-%s", mi.UUID, mi.Version, mi.Info.Name)
-	if err := mi.Sign(*privkey); err != nil {
+	if err := mi.Sign(privkey); err != nil {
 		return nil, err
 	}
 	return &mi, nil
@@ -100,7 +103,7 @@ func (mi *Metainfo) Write(w io.Writer) error {
 
 // Sign signs the Metainfo using given private key file.
 // Reference: https://stackoverflow.com/questions/10782826/digital-signature-for-a-file-using-openssl
-func (mi *Metainfo) Sign(key openssl.PrivateKey) error {
+func (mi *Metainfo) Sign(key *rsa.PrivateKey) error {
 	var (
 		data, sig []byte
 		err       error
@@ -110,7 +113,8 @@ func (mi *Metainfo) Sign(key openssl.PrivateKey) error {
 	if data, err = bencode.EncodeBytes(*mi); err != nil {
 		return err
 	}
-	sig, err = key.SignPKCS1v15(openssl.SHA256_Method, data)
+	hashed := sha256.Sum256(data)
+	sig, err = rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, hashed[:])
 	if err != nil {
 		return err
 	}
@@ -123,7 +127,7 @@ func (mi *Metainfo) Sign(key openssl.PrivateKey) error {
 
 // Verify verifies the Metainfo's signature using given public key file
 // Reference: https://stackoverflow.com/questions/10782826/digital-signature-for-a-file-using-openssl
-func (mi *Metainfo) Verify(key openssl.PublicKey) error {
+func (mi *Metainfo) Verify(pub *rsa.PublicKey) error {
 	var (
 		data []byte
 		err  error
@@ -133,7 +137,8 @@ func (mi *Metainfo) Verify(key openssl.PublicKey) error {
 		sigs := mi.Signatures
 		mi.Signatures = nil
 		if data, err = bencode.EncodeBytes(*mi); err == nil {
-			err = key.VerifyPKCS1v15(openssl.SHA256_Method, data, s.Signature)
+			hashed := sha256.Sum256(data)
+			err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, hashed[:], s.Signature)
 		}
 		mi.Signatures = sigs
 		return err

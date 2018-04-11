@@ -103,7 +103,7 @@ func (u *Update) Save() error {
 // Verify verifies the update. It returns an error if the verification fails,
 // otherwise nil.
 func (u *Update) Verify(a *Agent) error {
-	if err := u.Metainfo.Verify(*a.PublicKey); err != nil {
+	if err := u.Metainfo.Verify(a.PublicKey); err != nil {
 		log.Printf("verification failed: %v", err)
 		return errUpdateVerificationFailed
 	}

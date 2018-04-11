@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -18,7 +19,6 @@ import (
 	"github.com/anacrolix/dht"
 	"github.com/anacrolix/torrent"
 	"github.com/pkg/errors"
-	"github.com/spacemonkeygo/openssl"
 	"github.com/syncthing/syncthing/lib/nat"
 	"github.com/syncthing/syncthing/lib/upnp"
 )
@@ -35,7 +35,7 @@ type Agent struct {
 
 	Config    *Config
 	Overlay   *OverlayConn
-	PublicKey *openssl.PublicKey
+	PublicKey *rsa.PublicKey
 
 	updates       map[string]*Update
 	api           API
@@ -176,11 +176,7 @@ func DefaultConfig() Config {
 
 // NewAgent creates an Agent instance and immediately starts it.
 func NewAgent(cfg Config) (*Agent, error) {
-	var (
-		b   []byte
-		pub openssl.PublicKey
-		err error
-	)
+	var err error
 
 	j, _ := json.Marshal(cfg)
 	log.Printf("creating agent with config: %s", string(j))
@@ -215,13 +211,9 @@ func NewAgent(cfg Config) (*Agent, error) {
 	}
 
 	// load public key file
-	if b, err = ioutil.ReadFile(cfg.PublicKey.Filename); err != nil {
-		return nil, fmt.Errorf("ERROR: failed reading public key file '%s': %v", cfg.PublicKey.Filename, err)
-	}
-	if pub, err = openssl.LoadPublicKeyFromPEM(b); err != nil {
+	if a.PublicKey, err = LoadPublicKey(cfg.PublicKey.Filename); err != nil {
 		return nil, fmt.Errorf("ERROR: failed loading public key file '%s: %v", cfg.PublicKey.Filename, err)
 	}
-	a.PublicKey = &pub
 
 	// load update from local database
 	a.loadUpdates()
