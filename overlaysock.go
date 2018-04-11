@@ -478,8 +478,21 @@ func (overlay *OverlayConn) messageError([]interface{}) {
 	}
 }
 
+// Ready returns true if the overlay connection is ready to read or write packets,
+// otherwise false.
+func (overlay *OverlayConn) Ready() bool {
+	switch overlay.automata.current {
+	case stateListening, stateProcessingMessage, stateMessageError:
+		return true
+	}
+	return false
+}
+
 // ReadMsg returns a multicast message sent by other peer.
 func (overlay *OverlayConn) ReadMsg() ([]byte, error) {
+	if !overlay.Ready() {
+		return nil, fmt.Errorf("overlay is not ready")
+	}
 	deadline := overlay.readDeadline
 	if deadline == nil {
 		return <-overlay.peerDataChan, nil
@@ -496,6 +509,9 @@ func (overlay *OverlayConn) ReadMsg() ([]byte, error) {
 func (overlay *OverlayConn) Read(b []byte) (int, error) {
 	if b == nil {
 		return 0, fmt.Errorf("given buffer 'b' is nil")
+	}
+	if !overlay.Ready() {
+		return 0, fmt.Errorf("overlay is not ready")
 	}
 
 	var (
