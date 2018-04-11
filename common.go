@@ -6,9 +6,13 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/spacemonkeygo/openssl"
 
 	"github.com/gortc/stun"
 	"github.com/pkg/errors"
@@ -263,4 +267,51 @@ func LocalPeerID() (*PeerID, error) {
 		return &pid, nil
 	}
 	return nil, errors.New("CPU serial and active ethernet are not available")
+}
+
+// ExecEvery periodically executes function `f` every `t`. It returns a channel
+// that can be closed in order to stop this periodic execution.
+func ExecEvery(t time.Duration, f func()) chan struct{} {
+	ticker := time.NewTicker(t)
+	quit := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				f()
+			case <-quit:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+	return quit
+}
+
+// LoadPrivateKey reads and returns a private-key from given filename.
+func LoadPrivateKey(filename string) (openssl.PrivateKey, error) {
+	var (
+		key openssl.PrivateKey
+		b   []byte
+		err error
+	)
+
+	if b, err = ioutil.ReadFile(filename); err == nil {
+		key, err = openssl.LoadPrivateKeyFromPEM(b)
+	}
+	return key, err
+}
+
+// LoadPublicKey reads and returns a public-key from given filename.
+func LoadPublicKey(filename string) (openssl.PublicKey, error) {
+	var (
+		key openssl.PublicKey
+		b   []byte
+		err error
+	)
+
+	if b, err = ioutil.ReadFile(filename); err == nil {
+		key, err = openssl.LoadPublicKeyFromPEM(b)
+	}
+	return key, err
 }
