@@ -44,7 +44,7 @@ type Agent struct {
 	api           API
 	torrentClient *torrent.Client
 	quit          chan interface{}
-	notifications map[string]*Metainfo
+	notifications map[string]*Notification
 }
 
 // BitTorrentConfig holds configurations of BitTorrent client.
@@ -297,10 +297,10 @@ func (a *Agent) readTCP() {
 	}
 	for _, notification := range a.notifications {
 		u := Update{
-			Metainfo: *notification,
-			Stopped:  true,
-			Sent:     false,
-			agent:    a,
+			Notification: *notification,
+			Stopped:      true,
+			Sent:         false,
+			agent:        a,
 		}
 		if err := u.Start(a); err != nil {
 			switch err {
@@ -379,7 +379,7 @@ func bindRandomPort() int {
 func (a *Agent) addUpdate(u *Update) error {
 	a.Lock()
 	defer a.Unlock()
-	uuid := u.Metainfo.UUID
+	uuid := u.Notification.UUID
 	if _, ok := a.updates[uuid]; ok {
 		return fmt.Errorf("an update with uuid:%s is already exist", uuid)
 	}

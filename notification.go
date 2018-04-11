@@ -15,8 +15,8 @@ import (
 	"github.com/zeebo/bencode"
 )
 
-// Metainfo holds data of torrent file
-type Metainfo struct {
+// Notification holds the data of update notification
+type Notification struct {
 	// Fields from standard BitTorrent protocol
 	Info         metainfo.Info   `bencode:"info,omitempty"`
 	Announce     string          `bencode:"announce,omitempty"`
@@ -42,10 +42,10 @@ type Signature struct {
 	Signature   []byte `bencode:"signature,omitempty"`
 }
 
-// NewMetainfo creates a new Metainfo instance (torrent file) of given 'filePath'.
-func NewMetainfo(filename, uuid string, ver uint64, tracker string,
-	pieceLength int64, privkey *rsa.PrivateKey) (*Metainfo, error) {
-	mi := Metainfo{
+// NewNotification creates a new Notification instance of given update's filename.
+func NewNotification(filename, uuid string, ver uint64, tracker string,
+	pieceLength int64, privkey *rsa.PrivateKey) (*Notification, error) {
+	mi := Notification{
 		UUID:         uuid,
 		Version:      ver,
 		Announce:     tracker,
@@ -66,15 +66,15 @@ func NewMetainfo(filename, uuid string, ver uint64, tracker string,
 	return &mi, nil
 }
 
-// ReadMetainfo reads the Metainfo from given Reader.
-func ReadMetainfo(r io.Reader) (*Metainfo, error) {
-	var mi Metainfo
+// ReadNotification reads the Notification from given Reader.
+func ReadNotification(r io.Reader) (*Notification, error) {
+	var mi Notification
 	return &mi, bencode.NewDecoder(r).Decode(&mi)
 }
 
-// LoadMetainfoFromFile reads a torrentfile++ and returns its corresponding
-// Metainfo instance
-func LoadMetainfoFromFile(filename string) (*Metainfo, error) {
+// LoadNotificationFromFile reads an update notification from given filename
+// and returns its corresponding Notification instance
+func LoadNotificationFromFile(filename string) (*Notification, error) {
 	var (
 		f   *os.File
 		err error
@@ -84,26 +84,26 @@ func LoadMetainfoFromFile(filename string) (*Metainfo, error) {
 		return nil, err
 	}
 	defer f.Close()
-	return ReadMetainfo(f)
+	return ReadNotification(f)
 }
 
-// Write writes the Metainfo to given Writer
-func (mi *Metainfo) Write(w io.Writer) error {
+// Write writes the Notification to given Writer.
+func (mi *Notification) Write(w io.Writer) error {
 	var (
 		b   []byte
 		err error
 	)
 
 	if b, err = bencode.EncodeBytes(*mi); err != nil {
-		return fmt.Errorf("failed to generating bencode from Metainfo: %v", err)
+		return fmt.Errorf("failed to generating bencode from Notification: %v", err)
 	}
 	_, err = w.Write(b)
 	return err
 }
 
-// Sign signs the Metainfo using given private key file.
+// Sign signs the Notification using given private key file.
 // Reference: https://stackoverflow.com/questions/10782826/digital-signature-for-a-file-using-openssl
-func (mi *Metainfo) Sign(key *rsa.PrivateKey) error {
+func (mi *Notification) Sign(key *rsa.PrivateKey) error {
 	var (
 		data, sig []byte
 		err       error
@@ -125,9 +125,9 @@ func (mi *Metainfo) Sign(key *rsa.PrivateKey) error {
 	return nil
 }
 
-// Verify verifies the Metainfo's signature using given public key file
+// Verify verifies the Notification's signature using given public key file
 // Reference: https://stackoverflow.com/questions/10782826/digital-signature-for-a-file-using-openssl
-func (mi *Metainfo) Verify(pub *rsa.PublicKey) error {
+func (mi *Notification) Verify(pub *rsa.PublicKey) error {
 	var (
 		data []byte
 		err  error
@@ -147,7 +147,7 @@ func (mi *Metainfo) Verify(pub *rsa.PublicKey) error {
 }
 
 // torrentMetainfo returns the anacrolix's torrent Metainfo.
-func (mi *Metainfo) torrentMetainfo() (*metainfo.MetaInfo, error) {
+func (mi *Notification) torrentMetainfo() (*metainfo.MetaInfo, error) {
 	mm := metainfo.MetaInfo{
 		Announce:     mi.Announce,
 		Nodes:        mi.Nodes,

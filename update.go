@@ -43,13 +43,13 @@ const (
 type Update struct {
 	sync.RWMutex
 
-	Metainfo    Metainfo  `json:"metainfo"`
-	Deployed    time.Time `json:"deployed"`
-	Source      string    `json:"source"`
-	Stopped     bool      `json:"stopped"`
-	Sent        bool      `json:"sent"`
-	DeployFails int       `json:"deploy-fails"`
-	Missing     int64     `json:"missing"`
+	Notification Notification `json:"notification"`
+	Deployed     time.Time    `json:"deployed"`
+	Source       string       `json:"source"`
+	Stopped      bool         `json:"stopped"`
+	Sent         bool         `json:"sent"`
+	DeployFails  int          `json:"deploy-fails"`
+	Missing      int64        `json:"missing"`
 
 	torrent *torrent.Torrent
 	agent   *Agent
@@ -62,7 +62,7 @@ func NewUpdateFromMessage(b []byte, a *Agent) (*Update, error) {
 		Sent:    false,
 		agent:   a,
 	}
-	if err := bencode.DecodeBytes(b, &u.Metainfo); err != nil {
+	if err := bencode.DecodeBytes(b, &u.Notification); err != nil {
 		return nil, err
 	}
 	return &u, nil
@@ -84,7 +84,7 @@ func LoadUpdateFromFile(filename string, a *Agent) (*Update, error) {
 
 // MetadataFilename returns the name of the update metadata file.
 func (u *Update) MetadataFilename() string {
-	filename := fmt.Sprintf("%s-v%d", u.Metainfo.UUID, u.Metainfo.Version)
+	filename := fmt.Sprintf("%s-v%d", u.Notification.UUID, u.Notification.Version)
 	return filepath.Join(u.agent.Config.BitTorrent.MetadataDir, filename)
 }
 
@@ -103,7 +103,7 @@ func (u *Update) Save() error {
 // Verify verifies the update. It returns an error if the verification fails,
 // otherwise nil.
 func (u *Update) Verify(a *Agent) error {
-	if err := u.Metainfo.Verify(a.PublicKey); err != nil {
+	if err := u.Notification.Verify(a.PublicKey); err != nil {
 		log.Printf("verification failed: %v", err)
 		return errUpdateVerificationFailed
 	}
@@ -126,26 +126,26 @@ func (u *Update) Start(a *Agent) error {
 
 	// Remove existing update that has the same UUID. If the existing update
 	// is newer, then return an error.
-	if old := a.deleteUpdate(u.Metainfo.UUID); old != nil {
-		if old.Metainfo.Version > u.Metainfo.Version {
+	if old := a.deleteUpdate(u.Notification.UUID); old != nil {
+		if old.Notification.Version > u.Notification.Version {
 			return errUpdateIsOlder
-		} else if old.Metainfo.Version == u.Metainfo.Version {
+		} else if old.Notification.Version == u.Notification.Version {
 			return errUpdateIsAlreadyExist
 		}
 		old.Stop()
 		if err = old.Delete(); err != nil {
 			log.Printf("WARNING: failed to delete update uuid:%s version:%d : %v",
-				old.Metainfo.UUID, old.Metainfo.Version, err)
+				old.Notification.UUID, old.Notification.Version, err)
 		}
 	} else {
-		log.Printf("older update of uuid:%s does not exist", u.Metainfo.UUID)
+		log.Printf("older update of uuid:%s does not exist", u.Notification.UUID)
 	}
 
 	a.addUpdate(u)
 
 	// activate torrent
 	log.Printf("starting update: %s", u.String())
-	if mi, err = u.Metainfo.torrentMetainfo(); err != nil {
+	if mi, err = u.Notification.torrentMetainfo(); err != nil {
 		return fmt.Errorf("failed generating torrent metainfo: %v", err)
 	}
 	if u.torrent, err = a.torrentClient.AddTorrent(mi); err != nil {
@@ -172,7 +172,7 @@ func (u *Update) monitor(a *Agent) {
 		if !u.Sent {
 			if err := u.Send(a); err != nil {
 				log.Printf("failed sending update uuid:%s version:%d : %v",
-					u.Metainfo.UUID, u.Metainfo.Version, err)
+					u.Notification.UUID, u.Notification.Version, err)
 			} else {
 				u.Sent = true
 				toSave = true
@@ -240,12 +240,12 @@ func (u *Update) Delete() error {
 
 // Send sends the Update to the peers.
 func (u *Update) Send(a *Agent) error {
-	return u.Metainfo.Write(a.Overlay)
+	return u.Notification.Write(a.Overlay)
 }
 
 func (u *Update) String() string {
 	var b bytes.Buffer
-	b.WriteString(fmt.Sprintf("uuid:%v version:%d", u.Metainfo.UUID, u.Metainfo.Version))
+	b.WriteString(fmt.Sprintf("uuid:%v version:%d", u.Notification.UUID, u.Notification.Version))
 	if u.torrent != nil {
 		b.WriteString(fmt.Sprintf(" completed/missing:%v/%v",
 			u.torrent.BytesCompleted(), u.torrent.BytesMissing()))
@@ -265,7 +265,7 @@ func (u *Update) String() string {
 func (u *Update) deploy() {
 	if u.DeployFails > DeployFailsLimit {
 		log.Printf("Too many deployment failures:%d uuid:%s version:%d",
-			u.DeployFails, u.Metainfo.UUID, u.Metainfo.Version)
+			u.DeployFails, u.Notification.UUID, u.Notification.Version)
 		return
 	}
 
@@ -275,15 +275,15 @@ func (u *Update) deploy() {
 		err   error
 	)
 
-	log.Printf("deploying update uuid:%s version:%d", u.Metainfo.UUID, u.Metainfo.Version)
-	switch u.Metainfo.UUID {
+	log.Printf("deploying update uuid:%s version:%d", u.Notification.UUID, u.Notification.Version)
+	switch u.Notification.UUID {
 	case UUIDApk:
 		err = u.deployWith(apk)
 	case UUIDShell:
 		err = u.deployWith(shell)
 	default:
 		u.DeployFails++
-		log.Printf("ERROR: Unrecognized uuid:%s", u.Metainfo.UUID)
+		log.Printf("ERROR: Unrecognized uuid:%s", u.Notification.UUID)
 		return
 	}
 
@@ -299,14 +299,14 @@ func (u *Update) deployWith(d Deployer) error {
 	for _, f := range u.torrent.Files() {
 		script := filepath.Join(u.agent.Config.BitTorrent.DataDir, f.Path())
 		log.Printf("executing update shell uuid:%s version:%d file:%s",
-			u.Metainfo.UUID, u.Metainfo.Version, script)
+			u.Notification.UUID, u.Notification.Version, script)
 		if err := d.deploy(script, ShellExecutionTimeout*time.Second); err != nil {
 			log.Printf("ERROR: executed update shell with error uuid:%s version:%d file:%s - %v",
-				u.Metainfo.UUID, u.Metainfo.Version, f.Path(), err)
+				u.Notification.UUID, u.Notification.Version, f.Path(), err)
 			return err
 		}
 		log.Printf("executed update shell script uuid:%s version:%d file:%s",
-			u.Metainfo.UUID, u.Metainfo.Version, f.Path())
+			u.Notification.UUID, u.Notification.Version, f.Path())
 	}
 	return nil
 }

@@ -55,7 +55,7 @@ type Server struct {
 	udpConn   *net.UDPConn
 	publicKey *rsa.PublicKey
 
-	updates      map[string]*Metainfo
+	updates      map[string]*Notification
 	lastModified time.Time
 	lastSaved    time.Time
 }
@@ -138,7 +138,7 @@ func (s *Server) serveHTTPRequest(ctx *fasthttp.RequestCtx) {
 		return
 	case bytes.Compare(ctx.Method(), strPOST) == 0:
 		var (
-			m   Metainfo
+			m   Notification
 			err error
 		)
 		if err = json.Unmarshal(ctx.PostBody(), &m); err == nil {
@@ -354,7 +354,7 @@ func (s *Server) saveUpdates() {
 func (s *Server) loadUpdates() error {
 	s.Lock()
 	defer s.Unlock()
-	s.updates = make(map[string]*Metainfo)
+	s.updates = make(map[string]*Notification)
 	if _, err := os.Stat(s.cfg.Database); err != nil {
 		// database file does not exist
 		return nil

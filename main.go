@@ -44,7 +44,7 @@ func submitCmd(ctx *cli.Context) error {
 		return errors.Wrap(err, "failed loading private key")
 	}
 
-	mi, err := NewMetainfo(
+	mi, err := NewNotification(
 		filename,
 		uuid,
 		ver,
@@ -56,8 +56,8 @@ func submitCmd(ctx *cli.Context) error {
 	}
 
 	u := Update{
-		Source:   filename,
-		Metainfo: *mi,
+		Source:       filename,
+		Notification: *mi,
 	}
 
 	if output := ctx.String("output"); output != "" {
@@ -81,7 +81,7 @@ func submitCmd(ctx *cli.Context) error {
 
 func submitToServer(u *Update, addr string) error {
 	buf := bytes.NewBufferString("")
-	if err := json.NewEncoder(buf).Encode(u.Metainfo); err != nil {
+	if err := json.NewEncoder(buf).Encode(u.Notification); err != nil {
 		return errors.Wrap(err, "failed encoding update metainfo")
 	}
 	url := fmt.Sprintf("http://%s", addr)
