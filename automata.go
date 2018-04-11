@@ -10,33 +10,61 @@ import (
 	"sync"
 )
 
+const (
+	stateClosed State = iota
+	stateOpening
+	stateOpened
+	stateBinding
+	stateBindError
+	stateListening
+	stateProcessingMessage
+	stateMessageError
+)
+
+const (
+	eventOpen Event = iota + 100
+	eventClose
+	eventBind
+	eventSuccess
+	eventError
+	eventUnderLimit
+	eventOverLimit
+	eventChannelExpired
+)
+
 // Automata is a simple Finite State Machine (FSM). We can assign a callback function
 // that will be invoked when FSM reaches a particular state. We can also raise an event
 // to trigger a transition from one to another state.
 type Automata struct {
 	sync.RWMutex
-	current     int
+	current     State
 	transitions transitions
 	callbacks   callbacks
 }
 
+// State represents a state of the automata
+type State int
+
+// Event represents an event of the automata
+type Event int
+
 // Transition is a state transition from state `Src` to state `Dest` when event `Event`
 // raised.
 type Transition struct {
-	Src   int
-	Event int
-	Dest  int
+	Src   State
+	Event Event
+	Dest  State
 }
 
-type transitions map[int]map[int]int
+type transitions map[State]map[Event]State
 
 // Callback is a function that will be invoked when Automata reaches a particular state.
 type Callback func(data []interface{})
 
-type callbacks map[int]Callback
+type callbacks map[State]Callback
 
 // NewAutomata returns an instance of Automata.
-func NewAutomata(current int, ts []Transition, callbacks callbacks) *Automata {
+func NewAutomata(current State, ts []Transition, callbacks callbacks) *Automata {
 	fsm := &Automata{
 		current:     current,
 		transitions: make(transitions),
@@ -44,7 +72,7 @@ func NewAutomata(current int, ts []Transition, callbacks callbacks) *Automata {
 	}
 	for i := range ts {
 		if _, ok := fsm.transitions[ts[i].Src]; !ok {
-			fsm.transitions[ts[i].Src] = make(map[int]int, 0)
+			fsm.transitions[ts[i].Src] = make(map[Event]State, 0)
 		}
 		fsm.transitions[ts[i].Src][ts[i].Event] = ts[i].Dest
 	}
@@ -52,7 +80,7 @@ func NewAutomata(current int, ts []Transition, callbacks callbacks) *Automata {
 }
 
 // Current returns the current state of Automata.
-func (a *Automata) Current() int {
+func (a *Automata) Current() State {
 	a.RLock()
 	defer a.RUnlock()
 	return a.current
@@ -61,15 +89,15 @@ func (a *Automata) Current() int {
 // Event triggers a transition of Automata from one to another state.
 // Event returns an error when it cannot made the transition, for example:
 // there is no available transition.
-func (a *Automata) Event(event int, data ...interface{}) error {
+func (a *Automata) Event(event Event, data ...interface{}) error {
 	var (
-		dest int
+		dest State
 		ok   bool
 		cb   Callback
 	)
 	if dest, ok = a.transitions[a.current][event]; ok {
 		a.Lock()
-		log.Println("event", event, "transition from", a.current, "to", dest)
+		log.Println("event", event, "transition from", a.current.String(), "to", dest.String())
 		a.current = dest
 		a.Unlock()
 		if cb, ok = a.callbacks[a.current]; ok {
@@ -78,4 +106,26 @@ func (a *Automata) Event(event int, data ...interface{}) error {
 		return nil
 	}
 	return fmt.Errorf("state %d does not have transition for event %d", a.current, event)
+}
+
+func (s State) String() string {
+	switch s {
+	case stateClosed:
+		return "closed"
+	case stateOpening:
+		return "opening"
+	case stateOpened:
+		return "opened"
+	case stateBinding:
+		return "binding"
+	case stateBindError:
+		return "bindError"
+	case stateListening:
+		return "listening"
+	case stateProcessingMessage:
+		return "processingMessage"
+	case stateMessageError:
+		return "messageError"
+	}
+	return "undefined"
 }

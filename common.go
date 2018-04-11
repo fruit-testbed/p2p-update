@@ -31,28 +31,6 @@ const (
 	stunMaxPacketDataSize = 56 * 1024
 )
 
-const (
-	stateClosed = iota
-	stateOpening
-	stateOpened
-	stateBinding
-	stateBindError
-	stateListening
-	stateProcessingMessage
-	stateMessageError
-)
-
-const (
-	eventOpen = iota + 100
-	eventClose
-	eventBind
-	eventSuccess
-	eventError
-	eventUnderLimit
-	eventOverLimit
-	eventChannelExpired
-)
-
 var (
 	stunDataRequest           = stun.NewType(stun.MethodData, stun.ClassRequest)
 	stunDataSuccess           = stun.NewType(stun.MethodData, stun.ClassSuccessResponse)
