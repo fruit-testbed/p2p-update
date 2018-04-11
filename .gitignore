@@ -24,5 +24,8 @@
 /metadata
 /data
 
+# server database
+/server.db
+
 # example of update file
 test.sh
