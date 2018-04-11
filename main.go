@@ -9,8 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -21,30 +19,14 @@ import (
 	"time"
 
 	"github.com/gortc/stun"
-	"github.com/spacemonkeygo/openssl"
+	"github.com/pkg/errors"
 	"gopkg.in/urfave/cli.v1"
 )
 
 func submitCmd(ctx *cli.Context) error {
-	var (
-		content []byte
-		key     openssl.PrivateKey
-		err     error
-	)
-
-	if content, err = ioutil.ReadFile(ctx.String("private-key")); err != nil {
-		return err
-	}
-	if key, err = openssl.LoadPrivateKeyFromPEM(content); err != nil {
-		return err
-	}
-
-	filename := ctx.String("file")
+	filename, err := filepath.Abs(ctx.String("file"))
 	if _, err := os.Stat(filename); err != nil {
 		return fmt.Errorf("update file '%s' does not exist", filename)
-	}
-	if filename, err = filepath.Abs(filename); err != nil {
-		return err
 	}
 
 	uuid := ctx.String("uuid")
@@ -53,8 +35,13 @@ func submitCmd(ctx *cli.Context) error {
 	}
 
 	ver := ctx.Uint64("version")
-	if ver == 0 {
+	if ver <= 0 {
 		ver = uint64(time.Now().UTC().Unix())
+	}
+
+	key, err := LoadPrivateKey(ctx.String("private-key"))
+	if err != nil {
+		return errors.Wrap(err, "failed loading private key")
 	}
 
 	mi, err := NewMetainfo(
@@ -73,32 +60,47 @@ func submitCmd(ctx *cli.Context) error {
 		Metainfo: *mi,
 	}
 
-	filename = ctx.String("output")
-	if len(filename) != 0 {
-		var w io.Writer
-		if filename == "-" {
-			w = os.Stdout
-		} else {
-			f, err := os.OpenFile(filename,
-				os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+	if output := ctx.String("output"); output != "" {
+		w := os.Stdout
+		if output != "-" {
+			var err error
+			w, err = os.OpenFile(output, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
 				return err
 			}
-			defer f.Close()
-			w = f
+			defer w.Close()
 		}
 		return json.NewEncoder(w).Encode(&u)
 	}
 
-	// submit to agent
+	if err = submitToServer(&u, ctx.String("server")); err != nil {
+		return err
+	}
+	return submitToAgent(&u, ctx.String("unix-socket"))
+}
+
+func submitToServer(u *Update, addr string) error {
 	buf := bytes.NewBufferString("")
-	if err = json.NewEncoder(buf).Encode(&u); err != nil {
+	if err := json.NewEncoder(buf).Encode(u.Metainfo); err != nil {
+		return errors.Wrap(err, "failed encoding update metainfo")
+	}
+	url := fmt.Sprintf("http://%s", addr)
+	resp, err := http.DefaultClient.Post(url, "application/json", buf)
+	if err == nil && resp.StatusCode != 200 {
+		err = fmt.Errorf("status code: %d", resp.StatusCode)
+	}
+	return err
+}
+
+func submitToAgent(u *Update, addr string) error {
+	buf := bytes.NewBufferString("")
+	if err := json.NewEncoder(buf).Encode(u); err != nil {
 		return err
 	}
 	httpc := http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", ctx.String("unix-socket"))
+				return net.Dial("unix", addr)
 			},
 		},
 	}
@@ -122,6 +124,15 @@ func serverCmd(ctx *cli.Context) error {
 	}
 	if t := ctx.Int("advertise-session"); t > 0 {
 		cfg.SessionAdvertiseTime = t
+	}
+	if db := ctx.String("database"); db != "" {
+		cfg.Database = db
+	}
+	if t := ctx.Int("snapshot-time"); t > 0 {
+		cfg.SnapshotTime = t
+	}
+	if f := ctx.String("public-key"); f != "" {
+		cfg.PublicKey.Filename = f
 	}
 	if s, err = NewServer(*cfg); err != nil {
 		return err
@@ -228,9 +239,14 @@ func main() {
 					Usage: "Piece length",
 				},
 				cli.StringFlag{
-					Name:  "unix-socket, s",
+					Name:  "unix-socket, x",
 					Value: "p2pupdate.sock",
 					Usage: "Agent's unix socket file",
+				},
+				cli.StringFlag{
+					Name:  "server, s",
+					Value: "fruit-testbed.org:3478",
+					Usage: "Server address",
 				},
 			},
 		},
@@ -265,6 +281,21 @@ func main() {
 					Name:  "advertise-session",
 					Value: 60,
 					Usage: "Session table advertisement time (in second)",
+				},
+				cli.StringFlag{
+					Name:  "database",
+					Value: "server.db",
+					Usage: "Server database file",
+				},
+				cli.IntFlag{
+					Name:  "snapshot-time",
+					Value: 10,
+					Usage: "Snapshot database interval (in second)",
+				},
+				cli.StringFlag{
+					Name:  "public-key, k",
+					Value: "key.pub",
+					Usage: "Public key for verification",
 				},
 			},
 		},

@@ -5,12 +5,19 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
+	"os"
 	"sync"
 	"time"
+
+	"github.com/valyala/fasthttp"
+
+	"github.com/spacemonkeygo/openssl"
 
 	"github.com/gortc/stun"
 	"github.com/pkg/errors"
@@ -20,6 +27,9 @@ import (
 type ServerConfig struct {
 	Address              string `json:"address"`
 	SessionAdvertiseTime int    `json:"session-advertise-time"` // in seconds
+	Database             string `json:"database"`
+	SnapshotTime         int    `json:"snapshot-time"` // in seconds
+	PublicKey            Key    `json:"public-key"`
 }
 
 // DefaultServerConfig returns default server configurations.
@@ -27,6 +37,11 @@ func DefaultServerConfig() *ServerConfig {
 	cfg := &ServerConfig{
 		Address:              "",
 		SessionAdvertiseTime: 60,
+		Database:             "server.db",
+		SnapshotTime:         5,
+		PublicKey: Key{
+			Filename: "key.pub",
+		},
 	}
 	return cfg
 }
@@ -38,6 +53,13 @@ type Server struct {
 	ID    PeerID
 	peers SessionTable
 	cfg   *ServerConfig
+
+	udpConn   *net.UDPConn
+	publicKey openssl.PublicKey
+
+	updates      map[string]*Metainfo
+	lastModified time.Time
+	lastSaved    time.Time
 }
 
 // NewServer returns an instance of Server
@@ -45,6 +67,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	var (
 		id   *PeerID
 		addr *net.UDPAddr
+		pub  openssl.PublicKey
+		b    []byte
 		err  error
 	)
 
@@ -57,11 +81,26 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	if id, err = LocalPeerID(); err != nil {
 		return nil, errors.Wrap(err, "Cannot get local ID")
 	}
+
+	// load public key file
+	if b, err = ioutil.ReadFile(cfg.PublicKey.Filename); err != nil {
+		return nil, fmt.Errorf("ERROR: failed reading public key file '%s': %v",
+			cfg.PublicKey.Filename, err)
+	}
+	if pub, err = openssl.LoadPublicKeyFromPEM(b); err != nil {
+		return nil, fmt.Errorf("ERROR: failed loading public key file '%s: %v",
+			cfg.PublicKey.Filename, err)
+	}
+
 	s := &Server{
-		Addr:  addr,
-		ID:    *id,
-		peers: make(SessionTable),
-		cfg:   &cfg,
+		Addr:      addr,
+		ID:        *id,
+		peers:     make(SessionTable),
+		cfg:       &cfg,
+		publicKey: pub,
+	}
+	if err = s.loadUpdates(); err != nil {
+		return nil, errors.Wrap(err, "failed loading update database")
 	}
 
 	j, _ = json.Marshal(s.cfg)
@@ -75,25 +114,50 @@ func (s *Server) run(wg *sync.WaitGroup) {
 
 	conn, err := net.ListenUDP("udp", s.Addr)
 	if err != nil {
-		log.Println(err)
+		log.Printf("failed listening UDP at %s - %v", s.Addr.String(), err)
 		return
 	}
+	s.udpConn = conn
 
-	go func() {
-		d, _ := time.ParseDuration(fmt.Sprintf("%ds", s.cfg.SessionAdvertiseTime))
-		log.Printf("start a thread that advertises session table every %s", d)
-		for {
-			time.Sleep(d)
-			if err := s.advertiseSessionTable(conn); err != nil {
-				log.Println(err)
-			}
-		}
-	}()
+	ExecEvery(time.Duration(s.cfg.SessionAdvertiseTime)*time.Second, s.advertiseSessionTable)
+	ExecEvery(time.Duration(s.cfg.SnapshotTime)*time.Second, s.saveUpdates)
 
-	log.Printf("Serving at %s with id:%s", s.Addr.String(), s.ID.String())
+	go s.serveTCP()
+
 	if err = s.serve(conn); err != nil {
 		log.Println(err)
 	}
+}
+
+func (s *Server) serveTCP() {
+	if err := fasthttp.ListenAndServe(s.Addr.String(), s.serveHTTPRequest); err != nil {
+		log.Fatalf("failed serving TCP at %s - %v", s.Addr.String(), err)
+	}
+	log.Printf("Serving HTTP at %s", s.Addr.String())
+}
+
+func (s *Server) serveHTTPRequest(ctx *fasthttp.RequestCtx) {
+	switch {
+	case bytes.Compare(ctx.Method(), strGET) == 0:
+		s.RLock()
+		doJSONWrite(ctx, 200, s.updates)
+		s.RUnlock()
+		return
+	case bytes.Compare(ctx.Method(), strPOST) == 0:
+		var m Metainfo
+		if err := json.Unmarshal(ctx.PostBody(), &m); err == nil {
+			if err = m.Verify(s.publicKey); err == nil {
+				s.Lock()
+				if old, ok := s.updates[m.UUID]; !ok || old.Version < m.Version {
+					s.updates[m.UUID] = &m
+					s.lastModified = time.Now()
+				}
+				s.Unlock()
+				return
+			}
+		}
+	}
+	ctx.SetStatusCode(400)
 }
 
 func (s *Server) serve(c net.PacketConn) error {
@@ -101,6 +165,8 @@ func (s *Server) serve(c net.PacketConn) error {
 		res = new(stun.Message)
 		req = new(stun.Message)
 	)
+
+	log.Printf("Serving at %s with id:%s", s.Addr.String(), s.ID.String())
 	for {
 		if err := s.serveConn(c, res, req); err != nil {
 			log.Printf("WARNING: Served connection with error - %v", err)
@@ -242,7 +308,7 @@ func (s *Server) advertiseNewPeer(pid *PeerID, addrs []*net.UDPAddr, c net.Packe
 	}
 }
 
-func (s *Server) advertiseSessionTable(c net.PacketConn) error {
+func (s *Server) advertiseSessionTable() {
 	s.RLock()
 	defer s.RUnlock()
 	msg, err := stun.Build(
@@ -254,16 +320,48 @@ func (s *Server) advertiseSessionTable(c net.PacketConn) error {
 		stun.Fingerprint,
 	)
 	if err != nil {
-		errors.Wrap(err, "cannot build message to advertise session table: %v")
-	}
-	nerr := 0
-	for id, addrs := range s.peers {
-		if _, err = c.WriteTo(msg.Raw, addrs[0]); err != nil {
-			log.Printf("WARNING: failed sent session table message to %s[%s][%s]: %v",
-				id, addrs[0].String(), addrs[1].String(), err)
-			nerr++
+		log.Printf("cannot build message to advertise session table: %v", err)
+	} else {
+		nerr := 0
+		for id, addrs := range s.peers {
+			if _, err = s.udpConn.WriteTo(msg.Raw, addrs[0]); err != nil {
+				log.Printf("WARNING: failed sent session table message to %s[%s][%s]: %v",
+					id, addrs[0].String(), addrs[1].String(), err)
+				nerr++
+			}
 		}
+		log.Printf("sent session table to %d peers with %d failures", len(s.peers), nerr)
 	}
-	log.Printf("sent session table to %d peers with %d failures", len(s.peers), nerr)
-	return nil
+}
+
+func (s *Server) saveUpdates() {
+	s.Lock()
+	defer s.Unlock()
+	if !s.lastModified.After(s.lastSaved) {
+		return
+	}
+	f, err := os.OpenFile(s.cfg.Database, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
+	if err == nil {
+		err = json.NewEncoder(f).Encode(s.updates)
+	}
+	if err != nil {
+		log.Printf("failed saving update database: %v", err)
+	} else {
+		s.lastSaved = s.lastModified
+	}
+}
+
+func (s *Server) loadUpdates() error {
+	s.Lock()
+	defer s.Unlock()
+	s.updates = make(map[string]*Metainfo)
+	if _, err := os.Stat(s.cfg.Database); err != nil {
+		// database file does not exist
+		return nil
+	}
+	f, err := os.OpenFile(s.cfg.Database, os.O_RDONLY, 0640)
+	if err == nil {
+		err = json.NewDecoder(f).Decode(&s.updates)
+	}
+	return err
 }
