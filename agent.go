@@ -21,12 +21,15 @@ import (
 	"github.com/pkg/errors"
 	"github.com/syncthing/syncthing/lib/nat"
 	"github.com/syncthing/syncthing/lib/upnp"
+	"github.com/valyala/fasthttp"
 )
 
 var (
 	errUpdateIsAlreadyExist     = errors.New("update is already exist")
 	errUpdateIsOlder            = errors.New("update is older")
 	errUpdateVerificationFailed = errors.New("update verification failed")
+
+	readBuffer [64 * 1024]byte
 )
 
 // Agent is a representation of update agent.
@@ -41,6 +44,7 @@ type Agent struct {
 	api           API
 	torrentClient *torrent.Client
 	quit          chan interface{}
+	notifications map[string]*Metainfo
 }
 
 // BitTorrentConfig holds configurations of BitTorrent client.
@@ -264,33 +268,69 @@ func (a *Agent) startCatchingSignals() {
 }
 
 func (a *Agent) startGossip() {
-	var (
-		n   int
-		buf [64 * 1024]byte
-		u   *Update
-		err error
-	)
-
+	counter := 0
 	for {
 		if a == nil || !a.Overlay.Ready() {
+			counter++
 			time.Sleep(time.Second)
-		} else if n, err = a.Overlay.Read(buf[:]); err != nil {
-			log.Println("failed reading from overlay", err)
+			if counter > 300 {
+				counter = 0
+				a.readTCP()
+			}
 		} else {
-			b := buf[:n]
-			log.Printf("read a message from overlay: %s", string(b))
-			if u, err = NewUpdateFromMessage(b, a); err != nil {
-				log.Printf("the gossip message is not an update: %v", err)
-			} else if err = u.Start(a); err != nil {
-				switch err {
-				case errUpdateIsAlreadyExist, errUpdateIsOlder, errUpdateVerificationFailed:
-					log.Printf("ignored the update: %v", err)
-				default:
-					log.Printf("failed adding the torrent-file++ to TorrentClient: %v", err)
-				}
+			counter = 0
+			a.readOverlay()
+		}
+	}
+}
+
+func (a *Agent) readTCP() {
+	log.Println("readTCP - starting")
+	code, body, err := fasthttp.Get(nil, fmt.Sprintf("http://%s", a.Config.Server))
+	if code != 200 || err != nil {
+		log.Printf("readTCP - failed getting updates from server, status code: %d, error: %v", code, err)
+		return
+	}
+	if err := json.Unmarshal(body, a.notifications); err != nil {
+		log.Printf("readTCP - failed decoding notifications: %v", err)
+		return
+	}
+	for _, notification := range a.notifications {
+		u := Update{
+			Metainfo: *notification,
+			Stopped:  true,
+			Sent:     false,
+			agent:    a,
+		}
+		if err := u.Start(a); err != nil {
+			switch err {
+			case errUpdateIsAlreadyExist, errUpdateIsOlder, errUpdateVerificationFailed:
+				log.Printf("readTCP - ignored the update: %v", err)
+			default:
+				log.Printf("readTCP - failed adding the torrent-file++ to TorrentClient: %v", err)
 			}
 		}
 	}
+	log.Println("readTCP - finished")
+}
+
+func (a *Agent) readOverlay() {
+	log.Println("readOverlay - starting")
+	if n, err := a.Overlay.Read(readBuffer[:]); err != nil {
+		log.Println("readOverlay - failed reading", err)
+	} else {
+		if u, err := NewUpdateFromMessage(readBuffer[:n], a); err != nil {
+			log.Printf("readOverlay - the gossip message is not an update: %v", err)
+		} else if err = u.Start(a); err != nil {
+			switch err {
+			case errUpdateIsAlreadyExist, errUpdateIsOlder, errUpdateVerificationFailed:
+				log.Printf("readOverlay - ignored the update: %v", err)
+			default:
+				log.Printf("readOverlay - failed adding the torrent-file++ to TorrentClient: %v", err)
+			}
+		}
+	}
+	log.Println("readOverlay - finished")
 }
 
 // loadUpdates loads existing updates from local database (or files).

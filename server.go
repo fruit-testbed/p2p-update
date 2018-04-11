@@ -137,8 +137,11 @@ func (s *Server) serveHTTPRequest(ctx *fasthttp.RequestCtx) {
 		s.RUnlock()
 		return
 	case bytes.Compare(ctx.Method(), strPOST) == 0:
-		var m Metainfo
-		if err := json.Unmarshal(ctx.PostBody(), &m); err == nil {
+		var (
+			m   Metainfo
+			err error
+		)
+		if err = json.Unmarshal(ctx.PostBody(), &m); err == nil {
 			if err = m.Verify(s.publicKey); err == nil {
 				s.Lock()
 				if old, ok := s.updates[m.UUID]; !ok || old.Version < m.Version {
@@ -146,9 +149,13 @@ func (s *Server) serveHTTPRequest(ctx *fasthttp.RequestCtx) {
 					s.lastModified = time.Now()
 				}
 				s.Unlock()
-				return
 			}
 		}
+		if err != nil {
+			log.Println(string(ctx.PostBody()))
+			ctx.SetStatusCode(403)
+		}
+		return
 	}
 	ctx.SetStatusCode(400)
 }

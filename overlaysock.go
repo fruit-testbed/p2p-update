@@ -15,6 +15,12 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	errConnNotOpened = errors.New("connection is not opened")
+	errNotReady      = errors.New("overlay is not ready")
+	errBufferFull    = errors.New("data buffer is full")
+)
+
 type overlayUDPConn struct {
 	conn           *net.UDPConn
 	rendezvousAddr *net.UDPAddr
@@ -38,14 +44,14 @@ func newOverlayUDPConn(rendezvousAddr, localAddr *net.UDPAddr) (*overlayUDPConn,
 
 func (oc *overlayUDPConn) Read(p []byte) (n int, err error) {
 	if oc.conn == nil {
-		return -1, fmt.Errorf("connection is not opened")
+		return -1, errConnNotOpened
 	}
 	return oc.conn.Read(p)
 }
 
 func (oc *overlayUDPConn) Write(p []byte) (n int, err error) {
 	if oc.conn == nil {
-		return -1, fmt.Errorf("connection is not opened")
+		return -1, errConnNotOpened
 	}
 	return oc.conn.WriteToUDP(p, oc.rendezvousAddr)
 }
@@ -400,7 +406,7 @@ func (overlay *OverlayConn) peerDataRequest(pid *PeerID, addr *net.UDPAddr, req 
 	case overlay.peerDataChan <- data:
 		return nil
 	default:
-		return fmt.Errorf("ERROR: peer data buffer is full")
+		return errBufferFull
 	}
 }
 
@@ -491,7 +497,7 @@ func (overlay *OverlayConn) Ready() bool {
 // ReadMsg returns a multicast message sent by other peer.
 func (overlay *OverlayConn) ReadMsg() ([]byte, error) {
 	if !overlay.Ready() {
-		return nil, fmt.Errorf("overlay is not ready")
+		return nil, errNotReady
 	}
 	deadline := overlay.readDeadline
 	if deadline == nil {
@@ -502,16 +508,16 @@ func (overlay *OverlayConn) ReadMsg() ([]byte, error) {
 		return data, nil
 	case <-time.After(deadline.Sub(time.Now())):
 	}
-	return nil, fmt.Errorf("read timeout")
+	return nil, errNotReady
 }
 
 // Read reads a multicast message sent by other
 func (overlay *OverlayConn) Read(b []byte) (int, error) {
-	if b == nil {
+	if len(b) == 0 {
 		return 0, fmt.Errorf("given buffer 'b' is nil")
 	}
 	if !overlay.Ready() {
-		return 0, fmt.Errorf("overlay is not ready")
+		return 0, errNotReady
 	}
 
 	var (
