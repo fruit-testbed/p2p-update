@@ -14,6 +14,7 @@ import (
 )
 
 var (
+	updateURL  = "http://v1/update"
 	rUpdateURL = regexp.MustCompile("^/update/[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$")
 
 	strPOST            = []byte("POST")

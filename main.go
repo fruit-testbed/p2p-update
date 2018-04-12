@@ -5,13 +5,10 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -97,22 +94,25 @@ func submitToServer(u *Update, addr string) error {
 }
 
 func submitToAgent(u *Update, addr string) error {
-	buf := bytes.NewBufferString("")
-	if err := json.NewEncoder(buf).Encode(u); err != nil {
-		return err
-	}
-	httpc := http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", addr)
-			},
+	client := fasthttp.Client{
+		Dial: func(_ string) (net.Conn, error) {
+			return net.Dial("unix", addr)
 		},
 	}
-	resp, err := httpc.Post("http://v1/update", "application/json", buf)
-	if err == nil && resp.StatusCode != 200 {
-		err = fmt.Errorf("status code: %d", resp.StatusCode)
+	req := fasthttp.AcquireRequest()
+	req.SetRequestURI(updateURL)
+	req.Header.SetMethod("POST")
+	if err := json.NewEncoder(req.BodyWriter()).Encode(u); err != nil {
+		return fmt.Errorf("submitToAgent - failed encoding update: %v", err)
 	}
-	return err
+	res := fasthttp.AcquireResponse()
+	if err := client.DoDeadline(req, res, time.Now().Add(5*time.Second)); err != nil {
+		return fmt.Errorf("submitToAgent - failed http request: %v", err)
+	}
+	if res.StatusCode() != 200 {
+		return fmt.Errorf("submitToAgent - status code: %d", res.StatusCode())
+	}
+	return nil
 }
 
 func serverCmd(ctx *cli.Context) error {
