@@ -33,6 +33,5 @@
 # example of update file
 test.sh
 
-# dep lock and vendor files
-/Gopkg.lock
+# vendor files
 /vendor
