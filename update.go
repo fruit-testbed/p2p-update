@@ -14,7 +14,6 @@ import (
 	"github.com/anacrolix/torrent"
 
 	"github.com/anacrolix/torrent/metainfo"
-	"github.com/zeebo/bencode"
 )
 
 const (
@@ -55,17 +54,14 @@ type Update struct {
 	agent   *Agent
 }
 
-// NewUpdateFromMessage creates an Update instance from a byte-array of torrent++.
-func NewUpdateFromMessage(b []byte, a *Agent) (*Update, error) {
-	u := Update{
-		Stopped: true,
-		Sent:    false,
-		agent:   a,
+// NewUpdate returns an Update instance from given notification and agent.
+func NewUpdate(n Notification, a *Agent) *Update {
+	return &Update{
+		Notification: n,
+		Stopped:      true,
+		Sent:         false,
+		agent:        a,
 	}
-	if err := bencode.DecodeBytes(b, &u.Notification); err != nil {
-		return nil, err
-	}
-	return &u, nil
 }
 
 // LoadUpdateFromFile loads Update description from given filename.

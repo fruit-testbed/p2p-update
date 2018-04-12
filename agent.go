@@ -22,6 +22,7 @@ import (
 	"github.com/syncthing/syncthing/lib/nat"
 	"github.com/syncthing/syncthing/lib/upnp"
 	"github.com/valyala/fasthttp"
+	"github.com/zeebo/bencode"
 )
 
 var (
@@ -29,7 +30,9 @@ var (
 	errUpdateIsOlder            = errors.New("update is older")
 	errUpdateVerificationFailed = errors.New("update verification failed")
 
-	readBuffer [64 * 1024]byte
+	readBuffer       [64 * 1024]byte
+	bufNotification  Notification
+	bufNotifications = make(map[string]*Notification)
 )
 
 // Agent is a representation of update agent.
@@ -44,7 +47,6 @@ type Agent struct {
 	api           API
 	torrentClient *torrent.Client
 	quit          chan interface{}
-	notifications map[string]*Notification
 }
 
 // BitTorrentConfig holds configurations of BitTorrent client.
@@ -291,17 +293,12 @@ func (a *Agent) readTCP() {
 		log.Printf("readTCP - failed getting updates from server, status code: %d, error: %v", code, err)
 		return
 	}
-	if err := json.Unmarshal(body, a.notifications); err != nil {
+	if err := json.Unmarshal(body, bufNotifications); err != nil {
 		log.Printf("readTCP - failed decoding notifications: %v", err)
 		return
 	}
-	for _, notification := range a.notifications {
-		u := Update{
-			Notification: *notification,
-			Stopped:      true,
-			Sent:         false,
-			agent:        a,
-		}
+	for _, notification := range bufNotifications {
+		u := NewUpdate(*notification, a)
 		if err := u.Start(a); err != nil {
 			switch err {
 			case errUpdateIsAlreadyExist, errUpdateIsOlder, errUpdateVerificationFailed:
@@ -319,9 +316,10 @@ func (a *Agent) readOverlay() {
 	if n, err := a.Overlay.Read(readBuffer[:]); err != nil {
 		log.Println("readOverlay - failed reading", err)
 	} else {
-		if u, err := NewUpdateFromMessage(readBuffer[:n], a); err != nil {
-			log.Printf("readOverlay - the gossip message is not an update: %v", err)
-		} else if err = u.Start(a); err != nil {
+		if err := bencode.DecodeBytes(readBuffer[:n], &bufNotification); err != nil {
+			log.Printf("readOverlay - the gossip message is not a notification: %v", err)
+		}
+		if err = NewUpdate(bufNotification, a).Start(a); err != nil {
 			switch err {
 			case errUpdateIsAlreadyExist, errUpdateIsOlder, errUpdateVerificationFailed:
 				log.Printf("readOverlay - ignored the update: %v", err)
