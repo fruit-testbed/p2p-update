@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/valyala/fasthttp"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -79,16 +80,20 @@ func submitCmd(ctx *cli.Context) error {
 }
 
 func submitToServer(u *Update, addr string) error {
-	buf := bytes.NewBufferString("")
-	if err := json.NewEncoder(buf).Encode(u.Notification); err != nil {
-		return errors.Wrap(err, "failed encoding update metainfo")
+	req := fasthttp.AcquireRequest()
+	req.SetRequestURI(fmt.Sprintf("http://%s", addr))
+	req.Header.SetMethod("POST")
+	if err := json.NewEncoder(req.BodyWriter()).Encode(u.Notification); err != nil {
+		return fmt.Errorf("submitToServer - failed encoding notification: %v", err)
 	}
-	url := fmt.Sprintf("http://%s", addr)
-	resp, err := http.DefaultClient.Post(url, "application/json", buf)
-	if err == nil && resp.StatusCode != 200 {
-		err = fmt.Errorf("status code: %d", resp.StatusCode)
+	res := fasthttp.AcquireResponse()
+	if err := fasthttp.DoDeadline(req, res, time.Now().Add(5*time.Second)); err != nil {
+		return fmt.Errorf("submitToServer - failed http request: %v", err)
 	}
-	return err
+	if res.StatusCode() != 200 {
+		return fmt.Errorf("submitToServer - status code: %d", res.StatusCode())
+	}
+	return nil
 }
 
 func submitToAgent(u *Update, addr string) error {
