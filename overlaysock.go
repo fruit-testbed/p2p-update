@@ -213,8 +213,8 @@ func (overlay *OverlayConn) opening([]interface{}) {
 
 	if overlay.conn, err = newOverlayUDPConn(overlay.rendezvousAddr, overlay.localAddr); err != nil {
 		log.Printf("failed opening UDP connection (backing off for %v): %v",
-			overlay.Config.ErrorBackoff, err)
-		time.Sleep(overlay.Config.ErrorBackoff)
+			overlay.Config.ErrorBackoff*time.Second, err)
+		time.Sleep(overlay.Config.ErrorBackoff * time.Second)
 		overlay.automata.Event(eventError)
 	} else {
 		overlay.stun, err = stun.NewClient(
@@ -222,8 +222,7 @@ func (overlay *OverlayConn) opening([]interface{}) {
 				Connection: overlay.conn,
 			})
 		if err != nil {
-			log.Printf("failed dialing the STUN server at %s (backing off for %v) - %v",
-				overlay.Config.ErrorBackoff, overlay.rendezvousAddr, err)
+			log.Printf("failed dialing the STUN server at %s: %v", overlay.rendezvousAddr, err)
 			overlay.automata.Event(eventError)
 		} else {
 			log.Printf("local address: %s", overlay.conn.conn.LocalAddr().String())
@@ -242,7 +241,7 @@ func (overlay *OverlayConn) binding([]interface{}) {
 		err error
 	)
 
-	deadline := time.Now().Add(overlay.Config.BindingWait)
+	deadline := time.Now().Add(overlay.Config.BindingWait * time.Second)
 
 	handler := stun.HandlerFunc(func(e stun.Event) {
 		if e.Error != nil {
@@ -264,7 +263,7 @@ func (overlay *OverlayConn) binding([]interface{}) {
 			log.Println("XORMappedAddress", overlay.externalAddr)
 			log.Println("LocalAddr", overlay.conn.conn.LocalAddr())
 			log.Println("bindingSuccess")
-			overlay.channelExpired = time.Now().Add(overlay.Config.ChannelLifespan)
+			overlay.channelExpired = time.Now().Add(overlay.Config.ChannelLifespan * time.Second)
 			overlay.automata.Event(eventSuccess)
 		}
 	})
@@ -310,7 +309,7 @@ func (overlay *OverlayConn) bindError([]interface{}) {
 	overlay.errCount++
 	if overlay.errCount >= overlay.Config.BindingMaxErrors {
 		overlay.errCount = 0
-		time.Sleep(overlay.Config.ErrorBackoff)
+		time.Sleep(overlay.Config.ErrorBackoff * time.Second)
 		overlay.automata.Event(eventOverLimit)
 	} else {
 		overlay.automata.Event(eventUnderLimit)
@@ -337,7 +336,7 @@ func (overlay *OverlayConn) listening([]interface{}) {
 			overlay.automata.Event(eventError)
 		}
 	} else {
-		overlay.channelExpired = time.Now().Add(overlay.Config.ChannelLifespan)
+		overlay.channelExpired = time.Now().Add(overlay.Config.ChannelLifespan * time.Second)
 		overlay.msg, overlay.addr = buf[:n], addr
 		overlay.automata.Event(eventSuccess)
 	}

@@ -170,13 +170,13 @@ func DefaultConfig() Config {
 		},
 		Overlay: OverlayConfig{
 			StunPassword:        defaultStunPassword,
-			BindingWait:         10 * time.Second,
+			BindingWait:         10,
 			BindingMaxErrors:    5,
-			ListeningWait:       30 * time.Second,
+			ListeningWait:       30,
 			ListeningMaxErrors:  10,
 			ListeningBufferSize: 64 * 1024,
-			ErrorBackoff:        10 * time.Second,
-			ChannelLifespan:     60 * time.Second,
+			ErrorBackoff:        10,
+			ChannelLifespan:     60,
 		},
 	}
 }
