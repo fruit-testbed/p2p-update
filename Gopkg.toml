@@ -1,9 +1,9 @@
 [[constraint]]
-  branch = "24cbf25b72a4c565e49c4f3262cc47526fb5ebdf"
+  branch = "master"
   name = "github.com/anacrolix/dht"
 
 [[constraint]]
-  branch = "e9386d10160708ac7681fa8773923c8b434eb83b"
+  branch = "master"
   name = "github.com/anacrolix/torrent"
 
 [[constraint]]
