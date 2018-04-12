@@ -18,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gortc/stun"
 	"github.com/pkg/errors"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -49,7 +48,7 @@ func submitCmd(ctx *cli.Context) error {
 		uuid,
 		ver,
 		ctx.String("tracker"),
-		int64(ctx.Uint64("piece-length")),
+		ctx.Int64("piece-length"),
 		key)
 	if err != nil {
 		return err
@@ -151,34 +150,14 @@ func agentCmd(ctx *cli.Context) error {
 		err error
 	)
 
-	if cfg, err = NewConfig(ctx.GlobalString("config-file")); err != nil {
+	if cfg, err = NewConfig(ctx.String("config-file")); err != nil {
 		return err
 	} else if a, err = NewAgent(cfg); err != nil {
 		return err
 	}
 	a.Wait()
-	log.Println("agent has been shutdown")
+	log.Println("Agent has stopped.")
 	return nil
-}
-
-func sendCmd(ctx *cli.Context) error {
-	var (
-		addr = ctx.String("address")
-		c    *stun.Client
-		err  error
-	)
-
-	if c, err = stun.Dial("udp", addr); err != nil {
-		return fmt.Errorf("failed dialing to %s", addr)
-	}
-	return c.Indicate(stun.MustBuild(
-		stun.TransactionID,
-		stunDataRequest,
-		stun.NewUsername(ctx.App.Name),
-		PeerMessage([]byte(ctx.String("message"))),
-		stun.NewShortTermIntegrity(stunPassword),
-		stun.Fingerprint,
-	))
 }
 
 func main() {
@@ -187,13 +166,6 @@ func main() {
 	app.Usage = "Peer-to-peer secure update"
 	app.Version = "0.0.1"
 	app.EnableBashCompletion = true
-	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name:  "config-file",
-			Value: "config.json",
-			Usage: "Path of config file",
-		},
-	}
 
 	homeDir := "~/"
 	if user, err := user.Current(); err == nil {
@@ -233,7 +205,7 @@ func main() {
 					Value: DefaultTracker,
 					Usage: "BitTorrent tracker address",
 				},
-				cli.Uint64Flag{
+				cli.Int64Flag{
 					Name:  "piece-length, l",
 					Value: DefaultPieceLength,
 					Usage: "Piece length",
@@ -256,14 +228,9 @@ func main() {
 			Action: agentCmd,
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name:  "address",
-					Value: "0.0.0.0:9322",
-					Usage: "Address which the agent will listen to or send from",
-				},
-				cli.StringFlag{
-					Name:  "server",
-					Value: "fruit-testbed.org:3478",
-					Usage: "Address of the server",
+					Name:  "config-file, c",
+					Value: "config.json",
+					Usage: "Path of config file",
 				},
 			},
 		},
@@ -273,22 +240,22 @@ func main() {
 			Action: serverCmd,
 			Flags: []cli.Flag{
 				cli.StringFlag{
-					Name:  "address",
+					Name:  "address, a",
 					Value: ":3478",
 					Usage: "Address which the server will listen to",
 				},
 				cli.IntFlag{
-					Name:  "advertise-session",
+					Name:  "advertise-session, s",
 					Value: 60,
 					Usage: "Session table advertisement time (in second)",
 				},
 				cli.StringFlag{
-					Name:  "database",
+					Name:  "database, d",
 					Value: "server.db",
 					Usage: "Server database file",
 				},
 				cli.IntFlag{
-					Name:  "snapshot-time",
+					Name:  "snapshot-time, n",
 					Value: 10,
 					Usage: "Snapshot database interval (in second)",
 				},
@@ -296,22 +263,6 @@ func main() {
 					Name:  "public-key, k",
 					Value: "key.pub",
 					Usage: "Public key for verification",
-				},
-			},
-		},
-		{
-			Name:   "send",
-			Usage:  "send a STUN message to an agent/server",
-			Action: sendCmd,
-			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "address",
-					Usage: "Address to send",
-				},
-				cli.StringFlag{
-					Name:  "message",
-					Value: "Aloha!",
-					Usage: "Message to be sent",
 				},
 			},
 		},
