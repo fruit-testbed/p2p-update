@@ -114,15 +114,16 @@ func (a *Agent) torrentClientConfig() *torrent.Config {
 	}
 
 	return &torrent.Config{
-		ListenAddr:    fmt.Sprintf("%s:%d", addr, a.Config.BitTorrent.Port),
-		DataDir:       a.dataDir,
-		Seed:          true,
-		NoDHT:         false,
-		HTTPUserAgent: softwareName,
-		Debug:         a.Config.BitTorrent.Debug,
-		DHTConfig: dht.ServerConfig{
-			StartingNodes: dht.GlobalBootstrapAddrs,
+		ListenHost: func(_ string) string {
+			return addr
 		},
+		ListenPort:       a.Config.BitTorrent.Port,
+		DataDir:          a.dataDir,
+		Seed:             true,
+		NoDHT:            false,
+		HTTPUserAgent:    softwareName,
+		Debug:            a.Config.BitTorrent.Debug,
+		DhtStartingNodes: dht.GlobalBootstrapAddrs,
 	}
 }
 
@@ -224,7 +225,7 @@ func NewAgent(cfg Config) (*Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
 	}
-	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddr())
+	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddrs)
 
 	// updated Overlay config
 	a.Config.Overlay.Address = a.Config.Address
