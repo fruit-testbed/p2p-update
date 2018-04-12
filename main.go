@@ -141,6 +141,9 @@ func serverCmd(ctx *cli.Context) error {
 	if f := ctx.String("public-key"); f != "" {
 		cfg.PublicKey.Filename = f
 	}
+	if pwd := ctx.String("stun-password"); len(pwd) > 0 {
+		cfg.StunPassword = pwd
+	}
 	if s, err = NewServer(*cfg); err != nil {
 		return err
 	}
@@ -279,6 +282,10 @@ func main() {
 					Name:  "public-key, k",
 					Value: "key.pub",
 					Usage: "Public key for verification",
+				},
+				cli.StringFlag{
+					Name:  "stun-password, p",
+					Usage: "Password of STUN packets",
 				},
 			},
 		},

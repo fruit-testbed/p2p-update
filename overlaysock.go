@@ -67,7 +67,7 @@ func (oc *overlayUDPConn) Close() error {
 type OverlayConfig struct {
 	Address             string        `json:"address,omitempty"`
 	Server              string        `json:"server,omitempty"`
-	Password            string        `json:"password"`
+	StunPassword        string        `json:"stun-password"`
 	BindingWait         time.Duration `json:"binding-wait"`
 	BindingMaxErrors    int           `json:"binding-max-errors"`
 	ListeningWait       time.Duration `json:"listening-wait"`
@@ -251,7 +251,7 @@ func (overlay *OverlayConn) binding([]interface{}) {
 		} else if e.Message == nil {
 			log.Println("bindingError", errors.New("bindReq received an empty message"))
 			overlay.automata.Event(eventError)
-		} else if err := validateMessage(e.Message, &stun.BindingSuccess); err != nil {
+		} else if err := validateMessage(e.Message, &stun.BindingSuccess, overlay.Config.StunPassword); err != nil {
 			log.Println("bindingError", errors.Wrap(err, "bindReq received an invalid message:"))
 			overlay.automata.Event(eventError)
 		} else if err = overlay.externalAddr.GetFrom(e.Message); err != nil {
@@ -301,7 +301,7 @@ func (overlay *OverlayConn) bindingRequestMessage() (*stun.Message, error) {
 		xorAddr,
 		&overlay.Config.torrentPorts,
 		&overlay.ID,
-		stun.NewShortTermIntegrity(stunPassword),
+		stun.NewShortTermIntegrity(overlay.Config.StunPassword),
 		stun.Fingerprint,
 	)
 }
@@ -348,7 +348,7 @@ func (overlay *OverlayConn) parseHeader(req *stun.Message) (*PeerID, error) {
 		return nil, fmt.Errorf("!!! %s sent a message that is not a STUN message", overlay.addr)
 	} else if _, err := req.Write(overlay.msg); err != nil {
 		return nil, fmt.Errorf("failed to read message from %s: %v", overlay.addr, err)
-	} else if err := validateMessage(req, nil); err != nil {
+	} else if err := validateMessage(req, nil, overlay.Config.StunPassword); err != nil {
 		return nil, fmt.Errorf("%s sent invalid STUN message: %v", overlay.addr, err)
 	}
 
@@ -425,7 +425,7 @@ func (overlay *OverlayConn) bindPeerChannel(req *stun.Message) error {
 		stun.TransactionID,
 		stunChannelBindIndication,
 		&overlay.ID,
-		stun.NewShortTermIntegrity(stunPassword),
+		stun.NewShortTermIntegrity(overlay.Config.StunPassword),
 		stun.Fingerprint,
 	)
 	if err != nil {
@@ -459,7 +459,7 @@ func (overlay *OverlayConn) buildDataErrorMessage(req, res *stun.Message, ec stu
 		stunDataError,
 		ec,
 		&overlay.ID,
-		stun.NewShortTermIntegrity(stunPassword),
+		stun.NewShortTermIntegrity(overlay.Config.StunPassword),
 		stun.Fingerprint,
 	)
 }
@@ -469,7 +469,7 @@ func (overlay *OverlayConn) buildDataSuccessMessage(req, res *stun.Message) erro
 		stun.NewTransactionIDSetter(req.TransactionID),
 		stunDataSuccess,
 		&overlay.ID,
-		stun.NewShortTermIntegrity(stunPassword),
+		stun.NewShortTermIntegrity(overlay.Config.StunPassword),
 		stun.Fingerprint,
 	)
 }
@@ -573,7 +573,7 @@ func (overlay *OverlayConn) multicastMessage(data PeerMessage) (int, error) {
 		stunDataRequest,
 		data,
 		&overlay.ID,
-		stun.NewShortTermIntegrity(stunPassword),
+		stun.NewShortTermIntegrity(overlay.Config.StunPassword),
 		stun.Fingerprint,
 	)
 	if err != nil {

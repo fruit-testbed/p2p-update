@@ -169,6 +169,7 @@ func DefaultConfig() Config {
 			PieceLength: DefaultPieceLength,
 		},
 		Overlay: OverlayConfig{
+			StunPassword:        defaultStunPassword,
 			BindingWait:         10 * time.Second,
 			BindingMaxErrors:    5,
 			ListeningWait:       30 * time.Second,

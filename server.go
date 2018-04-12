@@ -28,6 +28,7 @@ type ServerConfig struct {
 	Database             string `json:"database"`
 	SnapshotTime         int    `json:"snapshot-time"` // in seconds
 	PublicKey            Key    `json:"public-key"`
+	StunPassword         string `json:"stun-password"`
 }
 
 // DefaultServerConfig returns default server configurations.
@@ -40,6 +41,7 @@ func DefaultServerConfig() *ServerConfig {
 		PublicKey: Key{
 			Filename: "key.pub",
 		},
+		StunPassword: defaultStunPassword,
 	}
 	return cfg
 }
@@ -215,7 +217,7 @@ func (s *Server) processMessage(addr net.Addr, msg []byte, req, res *stun.Messag
 	if _, err := req.Write(msg); err != nil {
 		return nil, errors.Wrap(err, "Failed to read message")
 	}
-	if err := validateMessage(req, nil); err != nil {
+	if err := validateMessage(req, nil, s.cfg.StunPassword); err != nil {
 		return nil, errors.Wrap(err, "Invalid message")
 	}
 	if req.Type == stun.BindingRequest {
@@ -275,7 +277,7 @@ func (s *Server) registerPeer(addr net.Addr, req, res *stun.Message) (*PeerID, e
 		},
 		&s.ID,
 		&s.peers,
-		stun.NewShortTermIntegrity(stunPassword),
+		stun.NewShortTermIntegrity(s.cfg.StunPassword),
 		stun.Fingerprint,
 	)
 }
@@ -286,7 +288,7 @@ func (s *Server) advertiseNewPeer(pid *PeerID, addrs []*net.UDPAddr, c net.Packe
 		stunBindingIndication,
 		&s.ID,
 		&SessionTable{*pid: addrs},
-		stun.NewShortTermIntegrity(stunPassword),
+		stun.NewShortTermIntegrity(s.cfg.StunPassword),
 		stun.Fingerprint,
 	)
 	if err != nil {
@@ -316,7 +318,7 @@ func (s *Server) advertiseSessionTable() {
 		stunBindingIndication,
 		&s.ID,
 		&s.peers,
-		stun.NewShortTermIntegrity(stunPassword),
+		stun.NewShortTermIntegrity(s.cfg.StunPassword),
 		stun.Fingerprint,
 	)
 	if err != nil {

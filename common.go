@@ -32,7 +32,7 @@ const (
 	signatureName = "org.fruit-testbed"
 	softwareName  = "fruit/p2p-update"
 
-	stunPassword          = "123"
+	defaultStunPassword   = "P2PupdateIsR0ck"
 	stunMaxPacketDataSize = 56 * 1024
 )
 
@@ -170,7 +170,7 @@ func GetSessionTableFrom(m *stun.Message) (*SessionTable, error) {
 	return &st, err
 }
 
-func validateMessage(m *stun.Message, t *stun.MessageType) error {
+func validateMessage(m *stun.Message, t *stun.MessageType, password string) error {
 	var (
 		err error
 	)
@@ -189,7 +189,7 @@ func validateMessage(m *stun.Message, t *stun.MessageType) error {
 		return fmt.Errorf("fingerprint is incorrect: %v", err)
 	}
 
-	i := stun.NewShortTermIntegrity(stunPassword)
+	i := stun.NewShortTermIntegrity(password)
 	if err = i.Check(m); err != nil {
 		return fmt.Errorf("Integrity bad: %v", err)
 	}
