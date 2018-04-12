@@ -185,7 +185,7 @@ func main() {
 			Flags: []cli.Flag{
 				cli.StringFlag{
 					Name:  "file, f",
-					Usage: "Update file",
+					Usage: "Update file or directory",
 				},
 				cli.Uint64Flag{
 					Name:  "version, v",
@@ -203,7 +203,7 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "output, o",
-					Usage: "output torrent file, or - for STDOUT",
+					Usage: "output notification file, or - for STDOUT",
 				},
 				cli.StringFlag{
 					Name:  "tracker, t",
@@ -217,7 +217,7 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "unix-socket, x",
-					Value: "p2pupdate.sock",
+					Value: "/var/run/p2pupdate.sock",
 					Usage: "Agent's unix socket file",
 				},
 				cli.StringFlag{
