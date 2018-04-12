@@ -240,12 +240,12 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "unix-socket, x",
-					Value: "/var/run/p2pupdate.sock",
+					Value: defaultUnixSocket,
 					Usage: "Agent's unix socket file",
 				},
 				cli.StringFlag{
 					Name:  "server, s",
-					Value: "fruit-testbed.org:3478",
+					Value: defaultServerAddress,
 					Usage: "Server address",
 				},
 			},
@@ -283,7 +283,7 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "database, d",
-					Value: "server.db",
+					Value: "/var/lib/p2pupdate-server.db",
 					Usage: "Server database file",
 				},
 				cli.IntFlag{
@@ -293,7 +293,7 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "public-key, k",
-					Value: "key.pub",
+					Value: fmt.Sprintf("%s/.ssh/id_rsa.pub", homeDir),
 					Usage: "Public key for verification",
 				},
 				cli.StringFlag{

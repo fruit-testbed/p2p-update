@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"os/user"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -155,16 +156,21 @@ func NewConfig(filename string) (Config, error) {
 
 // DefaultConfig returns default agent configurations.
 func DefaultConfig() Config {
+	homeDir := "~/"
+	if user, err := user.Current(); err == nil {
+		homeDir = user.HomeDir
+	}
+
 	return Config{
-		Server:  "fruit-testbed.org:3478",
+		Server:  defaultServerAddress,
 		Proxy:   false,
 		DataDir: "/var/lib/p2pupdate",
 		LogFile: "/var/log/p2pupdate.log",
 		PublicKey: Key{
-			Filename: "key.pub",
+			Filename: fmt.Sprintf("%s/id_rsa.pub", homeDir),
 		},
 		API: APIConfig{
-			Address: "/var/run/p2pupdate.sock",
+			Address: defaultUnixSocket,
 		},
 		BitTorrent: BitTorrentConfig{
 			Tracker:     DefaultTracker,

@@ -32,8 +32,11 @@ const (
 	signatureName = "org.fruit-testbed"
 	softwareName  = "fruit/p2p-update"
 
+	defaultServerAddress  = "fruit-testbed.org:3478"
 	defaultStunPassword   = "P2PupdateIsR0ck"
 	stunMaxPacketDataSize = 56 * 1024
+
+	defaultUnixSocket = "/var/run/p2pupdate.sock"
 )
 
 var (
