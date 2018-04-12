@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"gopkg.in/natefinch/lumberjack.v2"
+
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
 	"gopkg.in/urfave/cli.v1"
@@ -144,6 +146,17 @@ func serverCmd(ctx *cli.Context) error {
 	if pwd := ctx.String("stun-password"); len(pwd) > 0 {
 		cfg.StunPassword = pwd
 	}
+
+	if f := ctx.String("log-file"); len(f) > 0 {
+		log.SetOutput(&lumberjack.Logger{
+			Filename:   f,
+			MaxSize:    10,
+			MaxBackups: 1,
+			MaxAge:     28,
+			Compress:   true,
+		})
+	}
+
 	if s, err = NewServer(*cfg); err != nil {
 		return err
 	}
@@ -286,6 +299,11 @@ func main() {
 				cli.StringFlag{
 					Name:  "stun-password, p",
 					Usage: "Password of STUN packets",
+				},
+				cli.StringFlag{
+					Name:  "log-file, g",
+					Value: "/var/log/p2pupdate-server.log",
+					Usage: "Log file",
 				},
 			},
 		},

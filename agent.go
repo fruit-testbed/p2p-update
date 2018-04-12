@@ -24,6 +24,7 @@ import (
 	"github.com/syncthing/syncthing/lib/upnp"
 	"github.com/valyala/fasthttp"
 	"github.com/zeebo/bencode"
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
@@ -79,6 +80,7 @@ type Config struct {
 	Address string `json:"address"`
 	Server  string `json:"server"`
 	DataDir string `json:"data-dir"`
+	LogFile string `json:"log-file"`
 
 	// Public key file for verification
 	PublicKey Key `json:"public-key"`
@@ -157,6 +159,7 @@ func DefaultConfig() Config {
 		Server:  "fruit-testbed.org:3478",
 		Proxy:   false,
 		DataDir: "/var/lib/p2pupdate",
+		LogFile: "/var/log/p2pupdate.log",
 		PublicKey: Key{
 			Filename: "key.pub",
 		},
@@ -183,6 +186,16 @@ func DefaultConfig() Config {
 
 // NewAgent creates an Agent instance and immediately starts it.
 func NewAgent(cfg Config) (*Agent, error) {
+	if len(cfg.LogFile) > 0 {
+		log.SetOutput(&lumberjack.Logger{
+			Filename:   cfg.LogFile,
+			MaxSize:    10,
+			MaxBackups: 1,
+			MaxAge:     28,
+			Compress:   true,
+		})
+	}
+
 	var err error
 
 	j, _ := json.Marshal(cfg)
