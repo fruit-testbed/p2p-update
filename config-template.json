@@ -1,7 +1,0 @@
-{
-  "public-key": {
-    "filename": "fruit-key.pub"
-  },
-  "address": ":9323",
-  "server": "fruit-testbed.org:3478"
-}
