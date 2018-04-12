@@ -225,7 +225,7 @@ func NewAgent(cfg Config) (*Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
 	}
-	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddrs)
+	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddrs())
 
 	// updated Overlay config
 	a.Config.Overlay.Address = a.Config.Address
