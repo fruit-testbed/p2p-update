@@ -67,14 +67,14 @@ func (oc *overlayUDPConn) Close() error {
 type OverlayConfig struct {
 	Address             string        `json:"address,omitempty"`
 	Server              string        `json:"server,omitempty"`
-	Password            string        `json:"password,omitempty"`
-	BindingWait         time.Duration `json:"binding-wait,omitempty"`
-	BindingMaxErrors    int           `json:"binding-max-errors,omitempty"`
-	ListeningWait       time.Duration `json:"listening-wait,omitempty"`
-	ListeningMaxErrors  int           `json:"listening-max-errors,omitempty"`
-	ListeningBufferSize int           `json:"listening-buffer-size,omitempty"`
-	ErrorBackoff        time.Duration `json:"error-backoff,omitempty"`
-	ChannelLifespan     time.Duration `json:"channel-lifespan,omitempty"`
+	Password            string        `json:"password"`
+	BindingWait         time.Duration `json:"binding-wait"`
+	BindingMaxErrors    int           `json:"binding-max-errors"`
+	ListeningWait       time.Duration `json:"listening-wait"`
+	ListeningMaxErrors  int           `json:"listening-max-errors"`
+	ListeningBufferSize int           `json:"listening-buffer-size"`
+	ErrorBackoff        time.Duration `json:"error-backoff"`
+	ChannelLifespan     time.Duration `json:"channel-lifespan"`
 
 	torrentPorts TorrentPorts
 }

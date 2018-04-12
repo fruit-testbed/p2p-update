@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -47,55 +48,57 @@ type Agent struct {
 	api           API
 	torrentClient *torrent.Client
 	quit          chan interface{}
+
+	dataDir     string
+	metadataDir string
 }
 
 // BitTorrentConfig holds configurations of BitTorrent client.
 type BitTorrentConfig struct {
-	MetadataDir string `json:"metadata-dir,omitempty"`
-	DataDir     string `json:"data-dir,omitempty"`
-	Tracker     string `json:"tracker,omitempty"`
-	Debug       bool   `json:"debug,omitempty"`
-	PieceLength int64  `json:"piece-length,omitempty"`
-	Port        int    `json:"port,omitempty"`
+	Tracker     string `json:"tracker"`
+	Debug       bool   `json:"debug"`
+	PieceLength int64  `json:"piece-length"`
+	Port        int    `json:"port"`
 
 	externalPort int
 }
 
 // APIConfig holds configurations of API service.
 type APIConfig struct {
-	Address string `json:"address,omitempty"`
+	Address string `json:"address"`
 }
 
 // Key holds an encryption key file or the key (value) itself.
 type Key struct {
-	Filename string `json:"filename,omitempty"`
+	Filename string `json:"filename"`
 	Value    string `json:"value,omitempty"`
 }
 
 // Config specifies agent configurations.
 type Config struct {
-	Address string `json:"address,omitempty"`
-	Server  string `json:"server,omitempty"`
+	Address string `json:"address"`
+	Server  string `json:"server"`
+	DataDir string `json:"data-dir"`
 
 	// Public key file for verification
-	PublicKey Key `json:"public-key,omitempty"`
+	PublicKey Key `json:"public-key"`
 
 	// Proxy=true means the agent will not deploy the update
 	// on local node
-	Proxy bool `json:"proxy,omitempty"`
+	Proxy bool `json:"proxy"`
 
 	// Overlay network configurations for gossip protocol
-	Overlay OverlayConfig `json:"overlay,omitempty"`
+	Overlay OverlayConfig `json:"overlay"`
 
 	// REST API configuration
-	API APIConfig `json:"api,omitempty"`
+	API APIConfig `json:"api"`
 
 	// BitTorrent client configurations
-	BitTorrent BitTorrentConfig `json:"bittorrent,omitempty"`
+	BitTorrent BitTorrentConfig `json:"bittorrent"`
 }
 
-func (c *Config) torrentClientConfig() *torrent.Config {
-	addr := strings.Trim(c.Address, " \t\n\r")
+func (a *Agent) torrentClientConfig() *torrent.Config {
+	addr := strings.Trim(a.Config.Address, " \t\n\r")
 	overlayPort := 0
 	if ok, err := regexp.MatchString(`^.*:[0-9]+$`, addr); ok && err == nil {
 		i := strings.Index(addr, ":")
@@ -103,33 +106,31 @@ func (c *Config) torrentClientConfig() *torrent.Config {
 		addr = addr[0:i]
 	}
 
-	for c.BitTorrent.Port == 0 || c.BitTorrent.Port == overlayPort {
-		c.BitTorrent.Port = bindRandomPort()
+	if a.Config.BitTorrent.Port == 0 || a.Config.BitTorrent.Port == overlayPort {
+		a.Config.BitTorrent.Port = bindRandomPort()
 	}
 
 	return &torrent.Config{
-		ListenAddr:    fmt.Sprintf("%s:%d", addr, c.BitTorrent.Port),
-		DataDir:       c.BitTorrent.DataDir,
+		ListenAddr:    fmt.Sprintf("%s:%d", addr, a.Config.BitTorrent.Port),
+		DataDir:       a.dataDir,
 		Seed:          true,
 		NoDHT:         false,
 		HTTPUserAgent: softwareName,
-		Debug:         c.BitTorrent.Debug,
+		Debug:         a.Config.BitTorrent.Debug,
 		DHTConfig: dht.ServerConfig{
 			StartingNodes: dht.GlobalBootstrapAddrs,
 		},
 	}
 }
 
-func (c *Config) createDirs() error {
-	if _, err := os.Stat(c.BitTorrent.DataDir); err != nil {
-		if err = os.Mkdir(c.BitTorrent.DataDir, 0750); err != nil {
-			return err
-		}
+func (a *Agent) createDirs() error {
+	a.dataDir = path.Join(a.Config.DataDir, "update")
+	if err := os.MkdirAll(a.dataDir, 0750); err != nil {
+		return errors.Wrapf(err, "createDirs - failed creating directory %s", a.dataDir)
 	}
-	if _, err := os.Stat(c.BitTorrent.MetadataDir); err != nil {
-		if err = os.Mkdir(c.BitTorrent.MetadataDir, 0750); err != nil {
-			return err
-		}
+	a.metadataDir = path.Join(a.Config.DataDir, "notification")
+	if err := os.MkdirAll(a.metadataDir, 0750); err != nil {
+		return errors.Wrapf(err, "createDirs - failed creating directory %s", a.metadataDir)
 	}
 	return nil
 }
@@ -153,17 +154,16 @@ func NewConfig(filename string) (Config, error) {
 // DefaultConfig returns default agent configurations.
 func DefaultConfig() Config {
 	return Config{
-		Server: "fruit-testbed.org:3478",
+		Server:  "fruit-testbed.org:3478",
+		Proxy:   false,
+		DataDir: "/var/lib/p2pupdate",
 		PublicKey: Key{
 			Filename: "key.pub",
 		},
-		Proxy: false,
 		API: APIConfig{
-			Address: "p2pupdate.sock",
+			Address: "/var/run/p2pupdate.sock",
 		},
 		BitTorrent: BitTorrentConfig{
-			MetadataDir: "torrent/",
-			DataDir:     "data/",
 			Tracker:     DefaultTracker,
 			Debug:       false,
 			PieceLength: DefaultPieceLength,
@@ -195,12 +195,12 @@ func NewAgent(cfg Config) (*Agent, error) {
 	a.api.agent = a
 
 	// create required directories if necessary
-	if err = cfg.createDirs(); err != nil {
+	if err = a.createDirs(); err != nil {
 		return nil, err
 	}
 
 	// create Torrent Client
-	a.torrentClient, err = torrent.NewClient(cfg.torrentClientConfig())
+	a.torrentClient, err = torrent.NewClient(a.torrentClientConfig())
 	if err != nil {
 		return nil, fmt.Errorf("ERROR: failed creating Torrent client: %v", err)
 	}
@@ -335,19 +335,12 @@ func (a *Agent) readOverlay() {
 func (a *Agent) loadUpdates() {
 	log.Println("Loading updates from local database")
 
-	_, err := os.Stat(a.Config.BitTorrent.MetadataDir)
+	files, err := ioutil.ReadDir(a.metadataDir)
 	if err != nil {
-		if os.Mkdir(a.Config.BitTorrent.MetadataDir, 0700) != nil {
-			log.Fatalf("cannot create metadata dir: %s", a.Config.BitTorrent.MetadataDir)
-		}
-	}
-
-	files, err := ioutil.ReadDir(a.Config.BitTorrent.MetadataDir)
-	if err != nil {
-		log.Fatalf("cannot read metadata dir: %s", a.Config.BitTorrent.MetadataDir)
+		log.Fatalf("cannot read metadata dir: %s", a.metadataDir)
 	}
 	for _, f := range files {
-		filename := filepath.Join(a.Config.BitTorrent.MetadataDir, f.Name())
+		filename := filepath.Join(a.metadataDir, f.Name())
 		u, err := LoadUpdateFromFile(filename, a)
 		if err != nil {
 			log.Printf("failed loading update metadata file %s: %v", f.Name(), err)

@@ -81,7 +81,7 @@ func LoadUpdateFromFile(filename string, a *Agent) (*Update, error) {
 // MetadataFilename returns the name of the update metadata file.
 func (u *Update) MetadataFilename() string {
 	filename := fmt.Sprintf("%s-v%d", u.Notification.UUID, u.Notification.Version)
-	return filepath.Join(u.agent.Config.BitTorrent.MetadataDir, filename)
+	return filepath.Join(u.agent.metadataDir, filename)
 }
 
 // Save writes Update metadata to file.
@@ -216,7 +216,7 @@ func (u *Update) Delete() error {
 	}
 	if u.torrent != nil {
 		for _, f := range u.torrent.Files() {
-			filename := filepath.Join(u.agent.Config.BitTorrent.DataDir, f.Path())
+			filename := filepath.Join(u.agent.dataDir, f.Path())
 			if _, err := os.Stat(filename); err == nil {
 				if err = os.Remove(filename); err != nil {
 					return err
@@ -293,7 +293,7 @@ func (u *Update) deploy() {
 
 func (u *Update) deployWith(d Deployer) error {
 	for _, f := range u.torrent.Files() {
-		script := filepath.Join(u.agent.Config.BitTorrent.DataDir, f.Path())
+		script := filepath.Join(u.agent.dataDir, f.Path())
 		log.Printf("executing update shell uuid:%s version:%d file:%s",
 			u.Notification.UUID, u.Notification.Version, script)
 		if err := d.deploy(script, ShellExecutionTimeout*time.Second); err != nil {

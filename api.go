@@ -111,7 +111,7 @@ func (a *API) requestPostUpdate(ctx *fasthttp.RequestCtx) {
 	u.agent = a.agent
 
 	if _, err = os.Stat(u.Source); err == nil {
-		dest := filepath.Join(a.agent.Config.BitTorrent.DataDir, u.Notification.Info.Name)
+		dest := filepath.Join(a.agent.dataDir, u.Notification.Info.Name)
 		cmd := exec.Command("cp", "-af", u.Source, dest)
 		if err := cmd.Run(); err != nil {
 			log.Printf("failed copying update file from '%s' to '%s': %v",

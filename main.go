@@ -152,6 +152,10 @@ func serverCmd(ctx *cli.Context) error {
 }
 
 func agentCmd(ctx *cli.Context) error {
+	if ctx.Bool("default-config") {
+		return json.NewEncoder(os.Stdout).Encode(DefaultConfig())
+	}
+
 	var (
 		a   *Agent
 		cfg Config
@@ -239,6 +243,10 @@ func main() {
 					Name:  "config-file, c",
 					Value: "config.json",
 					Usage: "Path of config file",
+				},
+				cli.BoolFlag{
+					Name:  "default-config, d",
+					Usage: "Print default config to STDOUT",
 				},
 			},
 		},
