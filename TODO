@@ -24,7 +24,7 @@
 [x] the agent sends the port used by BitTorrent to the server
 [x] the server advertises session-table with BitTorrent ports
 [?] if the update file is a directory, then execute `<dir>/main.sh`
-[ ] implement fallback to TCP when UDP does not work e.g. DCS firewall
+[x] implement fallback to TCP when UDP does not work e.g. DCS firewall
 [ ] enable multiple servers -- this allows an agent to join two difference clusters
 
 
