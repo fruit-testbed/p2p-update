@@ -27,5 +27,8 @@
 # server database
 /server.db
 
+# log file
+/*.log
+
 # example of update file
 test.sh
