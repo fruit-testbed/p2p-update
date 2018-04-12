@@ -168,7 +168,7 @@ func DefaultConfig() Config {
 		DataDir: "/var/lib/p2pupdate",
 		LogFile: "/var/log/p2pupdate.log",
 		PublicKey: Key{
-			Filename: fmt.Sprintf("%s/id_rsa.pub", homeDir),
+			Filename: fmt.Sprintf("%s/.ssh/id_rsa.pub", homeDir),
 		},
 		API: APIConfig{
 			Address: defaultUnixSocket,
