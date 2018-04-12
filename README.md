@@ -1,42 +1,46 @@
-# p2p-update
-Peer to Peer Update project
+# Peer-to-Peer Secure Update
 
-## Setup guides
-* [Transmission](https://github.com/fruit-testbed/p2p-update/blob/master/transmission-items/setup.md "Transmission setup guide")
-* [Serf](https://github.com/fruit-testbed/p2p-update/blob/master/serf-items/setup.md "Serf setup guide")
-* [Puppet](https://github.com/fruit-testbed/p2p-update/blob/master/puppet-items/setup.md "Puppet setup guide")
+This project aims to provide a framework to securely distribute system update
+using peer-to-peer procotol that works in heterogeneous network environment,
+in the presence of NATs and firewalls, where there is no necessarily direct
+access from a management node to the devices being updated.
 
-## Sending torrent files over Serf
+The framework combines several key techniques:
+1. STUN-based UDP hole punching to discover and open NAT bindings
+2. A gossip protocol to deliver short messages to distribute update notifications
+3. BitTorrent to securely distribute the software update
 
-**.torrent** files can be sent as a user event payload to other nodes using Serf. This is done using the following command:
+This project is part of Federated RaspberryPi micro-Infrastructure Testbed - [FRuIT](https://fruit-testbed.org).
 
-``$ serf event update "$`cat [FILE].torrent`"``.
 
-Users should, in most cases, avoid using this and use **submitfile.py** script described below - this handles torrent creation and download management for all nodes.
+Requirements to compile:
+- Go version >=1.9
+- Go libraries:
+  - github.com/vmihailenco/msgpack
+  - github.com/spacemonkeygo/openssl
+  - gopkg.in/urfave/cli.v1
+  - github.com/anacrolix/torrent
+  - github.com/valyala/fasthttp
+  - github.com/zeebo/bencode
 
-These payloads are currently stored in **~/received-torrent.torrent**.
 
-Note that Serf user events have a 512 byte limit. Torrent files of just over 200 bytes can be reliably transmitted - further work is being done to establish the exact limit on this, and to hopefully increase this limit.
+Requirements to run on FruitOS/Alpine Linux:
+- musl
+- libstdc++
+- libcrypto1.0
+- libssl1.0
+- libgcc
+- zlib
 
-## Submitting a file
 
-**submitfile.py** allows a user to submit a file to be downloaded by other nodes in the swarm. This script copies the file to the transmission downloads directory, creates a torrent file and sends the data as a payload for the Serf 'update' event.
+- To run the STUN server
 
-**update.sh** writes a timestamp and event descriptor (`update`) to **events.log**, which will trigger torrent management and version checking in **agent.py**.
+    ```
+    $ p2pupdate server --address 0.0.0.0:3478
+    ```
 
-## Automated management script
+- To run the agent
 
-**agent.py** is an active listening management script to automate the process of torrenting and applying new update files for each node within the swarm. To run this script, use the following command in a separate terminal instance:
-`$sudo python agent.py`
-
-Currently **agent.py** does the following:
-
-    * Writes received torrent file data to ~/receivedtorrent.torrent
-    * Creates a torrent file based on sent torrent creation date to the correct transmission directory
-    * Checks other torrent files in this directory to see if this is the newest torrent file available
-    * Adds new torrent to transmission-daemon if and only if this is the case
-    * Copies original file to transmission folder to allow seeding to take place
-    * Monitors torrents for completed downloads
-    * Applies update manifests and installs modules as soon as they have finished downloading
-
-**_NOTE_**: lines 79, 84 and 93 contain calls to `os.system` which require the user to enter the username and password information for their transmission client(s).
+    ```
+    $ p2pupdate agent -server fruit-testbed.org:3478 --address 10.0.0.5:9322
+    ```

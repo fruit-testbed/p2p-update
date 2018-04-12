@@ -1,0 +1,38 @@
+.DS_Store
+
+# Binaries
+/main
+/p2pupdate*
+
+# Torrent file
+*.torrent
+
+# Helper scripts
+/bencode-to-json.py
+
+# key file
+/fruit-key.pub
+
+# config file
+/config.json
+
+# Example REST API Post data
+/update*.json
+
+# data directory
+/torrent
+/metadata
+/data
+
+# server database
+/server.db
+
+# log file
+/*.log
+
+# example of update file
+test.sh
+
+# dep lock and vendor files
+/Gopkg.lock
+/vendor

@@ -1,0 +1,34 @@
+[x] agent/server STUN hole punching
+[x] create bittorrent file from given binary file
+[x] http on unix socket so that a user can
+    [x] submit a new update
+    [x] query overlay's peers (session-table)
+[x] gossip protocol over UDP multicast
+    [x] send torrent-file from one to another peer
+    [x] multicast torrent-file
+    [x] re-multicast newer torrent-file
+[x] start bittorrent seeding to serve update file
+[x] start bittorrent download/seeding when it receives a new update notification
+[x] update metadata file must have path of 'metadata/<uuid>-v<version>'
+[x] save update metadata when its state changed
+[x] delete older version of update
+[x] load updates from local database when starting the agent
+[x] allow `admin` command to submit update from any working directory
+    [x] copy the update file to agent's `data/` directory
+    [x] use format `<uuid>-v<version>-<original-filename>` as the new name of update file
+    [x] modify torrent-file to apply above format
+[x] allow proxy mode -- the agent will not deploy the update on local node
+[x] probe available port at NAT router before starting torrent client
+    - see https://github.com/anacrolix/torrent/blob/5a7c4fc135eda0996079a46b43bc0ee8116d7093/portfwd.go#L12
+    - the port can be picked randomly (between 50000 - 60000)
+[x] the agent sends the port used by BitTorrent to the server
+[x] the server advertises session-table with BitTorrent ports
+[?] if the update file is a directory, then execute `<dir>/main.sh`
+[x] implement fallback to TCP when UDP does not work e.g. DCS firewall
+[ ] enable multiple servers -- this allows an agent to join two difference clusters
+
+
+Legends:
+[x] implemented
+[?] implemented but not tested
+[ ] not implemented

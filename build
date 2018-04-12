@@ -1,0 +1,14 @@
+#!/bin/sh -e
+#
+# For reducing binary's size:
+# https://blog.filippo.io/shrink-your-go-binaries-with-this-one-weird-trick/
+#
+
+BIN=p2pupdate
+
+if [ "$1" = "rpi" ]; then
+  GOOS=linux GOARCH=arm GOARM=6 \
+    go build -ldflags="$FLAGS" -o $BIN *.go
+else
+  go build -ldflags="$FLAGS" -o $BIN *.go
+fi
