@@ -24,6 +24,7 @@ var (
 	strApplicationJSON = []byte("application/json")
 	strV1              = []byte("v1")
 
+	pathConfig          = []byte("/config")
 	pathOverlayPeers    = []byte("/overlay/peers")
 	pathUpdate          = []byte("/update")
 	pathTorrentDhtNodes = []byte("/torrent/dht/nodes")
@@ -48,6 +49,8 @@ func (a *API) requestHandler(ctx *fasthttp.RequestCtx) {
 		return
 	}
 	switch {
+	case bytes.Compare(ctx.Path(), pathConfig) == 0:
+		a.requestConfig(ctx)
 	case bytes.Compare(ctx.Path(), pathOverlayPeers) == 0:
 		a.requestOverlayPeers(ctx)
 	case rUpdateURL.Match(ctx.Path()):
@@ -56,6 +59,15 @@ func (a *API) requestHandler(ctx *fasthttp.RequestCtx) {
 		a.requestUpdate(ctx)
 	case bytes.Compare(ctx.Path(), pathTorrentDhtNodes) == 0:
 		a.requestTorrentDhtNodes(ctx)
+	default:
+		ctx.Response.SetStatusCode(400)
+	}
+}
+
+func (a *API) requestConfig(ctx *fasthttp.RequestCtx) {
+	switch {
+	case bytes.Compare(ctx.Method(), strGET) == 0:
+		doJSONWrite(ctx, 200, a.agent.Config)
 	default:
 		ctx.Response.SetStatusCode(400)
 	}
