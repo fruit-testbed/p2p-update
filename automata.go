@@ -97,7 +97,8 @@ func (a *Automata) Event(event Event, data ...interface{}) error {
 	)
 	if dest, ok = a.transitions[a.current][event]; ok {
 		a.Lock()
-		log.Println("event", event, "transition from", a.current.String(), "to", dest.String())
+		log.Println("event", event.String(), "transition from",
+			a.current.String(), "to", dest.String())
 		a.current = dest
 		a.Unlock()
 		if cb, ok = a.callbacks[a.current]; ok {
@@ -105,7 +106,8 @@ func (a *Automata) Event(event Event, data ...interface{}) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("state %d does not have transition for event %d", a.current, event)
+	return fmt.Errorf("state %s does not have transition for event %s",
+		a.current.String(), event.String())
 }
 
 func (s State) String() string {
@@ -126,6 +128,28 @@ func (s State) String() string {
 		return "processingMessage"
 	case stateMessageError:
 		return "messageError"
+	}
+	return "undefined"
+}
+
+func (e Event) String() string {
+	switch e {
+	case eventBind:
+		return "bind"
+	case eventChannelExpired:
+		return "channelExpired"
+	case eventClose:
+		return "close"
+	case eventError:
+		return "error"
+	case eventOpen:
+		return "open"
+	case eventOverLimit:
+		return "overLimit"
+	case eventSuccess:
+		return "success"
+	case eventUnderLimit:
+		return "underLimit"
 	}
 	return "undefined"
 }
