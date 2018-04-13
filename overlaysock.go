@@ -445,8 +445,8 @@ func (overlay *OverlayConn) bindPeerChannel(req *stun.Message) error {
 				id, addrs[0].String(), addrs[1].String(), err)
 		} else {
 			overlay.peers[id] = addrs
-			log.Printf("-> sent channelBind request to %s[%s][%s] ",
-				id, addrs[0].String(), addrs[1].String())
+			//log.Printf("-> sent channelBind request to %s[%s][%s] ",
+			//	id, addrs[0].String(), addrs[1].String())
 		}
 	}
 	return nil
