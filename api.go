@@ -22,6 +22,11 @@ var (
 	strDELETE          = []byte("DELETE")
 	strContentType     = []byte("Content-Type")
 	strApplicationJSON = []byte("application/json")
+	strV1              = []byte("v1")
+
+	pathOverlayPeers    = []byte("/overlay/peers")
+	pathUpdate          = []byte("/update")
+	pathTorrentDhtNodes = []byte("/torrent/dht/nodes")
 )
 
 // API provides REST API implementations of the agent.
@@ -38,17 +43,43 @@ func (a *API) Start() {
 }
 
 func (a *API) requestHandler(ctx *fasthttp.RequestCtx) {
-	if bytes.Compare(ctx.Host(), []byte("v1")) != 0 {
+	if bytes.Compare(ctx.Host(), strV1) != 0 {
 		ctx.Response.SetStatusCode(400)
 		return
 	}
 	switch {
-	case bytes.Compare(ctx.Path(), []byte("/overlay/peers")) == 0:
+	case bytes.Compare(ctx.Path(), pathOverlayPeers) == 0:
 		a.requestOverlayPeers(ctx)
 	case rUpdateURL.Match(ctx.Path()):
 		a.requestUpdateWithParam(ctx)
-	case bytes.Compare(ctx.Path(), []byte("/update")) == 0:
+	case bytes.Compare(ctx.Path(), pathUpdate) == 0:
 		a.requestUpdate(ctx)
+	case bytes.Compare(ctx.Path(), pathTorrentDhtNodes) == 0:
+		a.requestTorrentDhtNodes(ctx)
+	default:
+		ctx.Response.SetStatusCode(400)
+	}
+}
+
+func (a *API) requestTorrentDhtNodes(ctx *fasthttp.RequestCtx) {
+	switch {
+	case bytes.Compare(ctx.Method(), strGET) == 0:
+		ctx.Response.Header.SetCanonical(strContentType, strApplicationJSON)
+		ctx.Response.SetStatusCode(200)
+		ctx.WriteString("[")
+		i := 0
+		for _, srv := range a.agent.torrentClient.DhtServers() {
+			for _, node := range srv.Nodes() {
+				if i > 0 {
+					ctx.WriteString(",")
+				}
+				ctx.WriteString("\"")
+				ctx.WriteString(node.Addr.String())
+				ctx.WriteString("\"")
+				i++
+			}
+		}
+		ctx.WriteString("]")
 	default:
 		ctx.Response.SetStatusCode(400)
 	}
