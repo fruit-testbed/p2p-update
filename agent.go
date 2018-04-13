@@ -61,6 +61,7 @@ type BitTorrentConfig struct {
 	Debug       bool   `json:"debug"`
 	PieceLength int64  `json:"piece-length"`
 	Port        int    `json:"port"`
+	NoDHT       bool   `json:"no-dht"`
 
 	externalPort int
 }
@@ -118,7 +119,7 @@ func (a *Agent) torrentClientConfig() *torrent.Config {
 		ListenPort:       a.Config.BitTorrent.Port,
 		DataDir:          a.dataDir,
 		Seed:             true,
-		NoDHT:            false,
+		NoDHT:            a.Config.BitTorrent.NoDHT,
 		HTTPUserAgent:    softwareName,
 		Debug:            a.Config.BitTorrent.Debug,
 		DhtStartingNodes: dht.GlobalBootstrapAddrs,
@@ -162,7 +163,6 @@ func DefaultConfig() Config {
 
 	return Config{
 		Server:  defaultServerAddress,
-		Proxy:   false,
 		DataDir: "/var/lib/p2pupdate",
 		LogFile: "/var/log/p2pupdate.log",
 		PublicKey: Key{
@@ -173,7 +173,6 @@ func DefaultConfig() Config {
 		},
 		BitTorrent: BitTorrentConfig{
 			Tracker:     DefaultTracker,
-			Debug:       false,
 			PieceLength: DefaultPieceLength,
 		},
 		Overlay: OverlayConfig{
