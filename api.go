@@ -20,6 +20,7 @@ var (
 	strPOST            = []byte("POST")
 	strGET             = []byte("GET")
 	strDELETE          = []byte("DELETE")
+	strPATCH           = []byte("PATCH")
 	strContentType     = []byte("Content-Type")
 	strApplicationJSON = []byte("application/json")
 	strV1              = []byte("v1")
@@ -114,8 +115,23 @@ func (a *API) requestUpdateWithParam(ctx *fasthttp.RequestCtx) {
 		a.requestGetUpdateWithUUID(ctx, ctx.Path()[8:])
 	case bytes.Compare(ctx.Method(), strDELETE) == 0:
 		a.requestDeleteUpdate(ctx, ctx.Path()[8:])
+	case bytes.Compare(ctx.Method(), strPATCH) == 0:
+		a.requestBroadcastUpdateWithUUID(ctx, ctx.Path()[8:])
 	default:
 		ctx.Response.SetStatusCode(400)
+	}
+}
+
+func (a *API) requestBroadcastUpdateWithUUID(ctx *fasthttp.RequestCtx, uuid []byte) {
+	update := a.agent.getUpdate(string(uuid))
+	if update == nil {
+		ctx.Response.SetStatusCode(404)
+		return
+	}
+	if err := update.Send(a.agent); err != nil {
+		log.Printf("requestBroadcastUpdateWithUUID - failed uuid:%s - %v",
+			string(uuid), err)
+		ctx.Response.SetStatusCode(500)
 	}
 }
 
