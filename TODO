@@ -26,10 +26,22 @@
 [?] if the update file is a directory, then execute `<dir>/main.sh`
 [x] implement fallback to TCP when UDP does not work e.g. DCS firewall
 [ ] enable multiple servers -- this allows an agent to join two difference clusters
-[ ] test bittorrent on node behind DCS network
+[x] test bittorrent on node behind DCS network
 [ ] auto-detect internal IP address
+[x] specify network interface to use
+[ ] server: peer lifetime in session table
+[ ] apks:
+    - stop service before upgrade
+    - start service after upgrade
+    - old config -> /etc/p2p-update/config.json.old
+    - new config -> /etc/p2p-update/config.json
 
 Legends:
 [x] implemented
 [?] implemented but not tested
 [ ] not implemented
+
+
+Known issues:
+- binding always errors when there are more than 4 clients - server needs to be restarted
+- RaspberryPiSerial() doesn't work on RPi1
