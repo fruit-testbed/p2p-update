@@ -22,7 +22,7 @@ import (
 
 const (
 	// DefaultTracker is the default BitTorrent tracker address
-	DefaultTracker = "https://fruit-testbed.org:443/announce"
+	DefaultTracker = "http://fruit-testbed.org:6969/announce"
 
 	// DefaultPieceLength is the default length of BitTorrent file-piece
 	DefaultPieceLength = 32 * 1024
