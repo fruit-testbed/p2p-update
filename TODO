@@ -26,7 +26,8 @@
 [?] if the update file is a directory, then execute `<dir>/main.sh`
 [x] implement fallback to TCP when UDP does not work e.g. DCS firewall
 [ ] enable multiple servers -- this allows an agent to join two difference clusters
-
+[ ] test bittorrent on node behind DCS network
+[ ] auto-detect internal IP address
 
 Legends:
 [x] implemented
