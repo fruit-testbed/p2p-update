@@ -399,15 +399,20 @@ func bindRandomPort() int {
 	return rand.Intn(10000) + 50000
 }
 
-func (a *Agent) addUpdate(u *Update) error {
+func (a *Agent) addUpdate(u *Update) (*Update, error) {
 	a.Lock()
 	defer a.Unlock()
 	uuid := u.Notification.UUID
-	if _, ok := a.updates[uuid]; ok {
-		return fmt.Errorf("an update with uuid:%s is already exist", uuid)
+	old, ok := a.updates[uuid]
+	if ok {
+		if old.Notification.Version > u.Notification.Version {
+			return nil, errUpdateIsOlder
+		} else if old.Notification.Version == u.Notification.Version {
+			return nil, errUpdateIsAlreadyExist
+		}
 	}
 	a.updates[uuid] = u
-	return nil
+	return old, nil
 }
 
 func (a *Agent) deleteUpdate(uuid string) *Update {

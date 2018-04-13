@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/anacrolix/torrent"
+	"github.com/pkg/errors"
 
 	"github.com/anacrolix/torrent/metainfo"
 )
@@ -113,6 +114,7 @@ func (u *Update) Start(a *Agent) error {
 
 	var (
 		mi  *metainfo.MetaInfo
+		old *Update
 		err error
 	)
 
@@ -122,22 +124,18 @@ func (u *Update) Start(a *Agent) error {
 
 	// Remove existing update that has the same UUID. If the existing update
 	// is newer, then return an error.
-	if old := a.deleteUpdate(u.Notification.UUID); old != nil {
-		if old.Notification.Version > u.Notification.Version {
-			return errUpdateIsOlder
-		} else if old.Notification.Version == u.Notification.Version {
-			return errUpdateIsAlreadyExist
-		}
+	if old, err = a.addUpdate(u); err != nil {
+		return err
+	}
+	if old == nil {
+		log.Printf("older update of uuid:%s does not exist", u.Notification.UUID)
+	} else {
 		old.Stop()
 		if err = old.Delete(); err != nil {
-			log.Printf("WARNING: failed to delete update uuid:%s version:%d : %v",
+			log.Printf("WARNING: failed to delete update uuid:%s version:%d - %v",
 				old.Notification.UUID, old.Notification.Version, err)
 		}
-	} else {
-		log.Printf("older update of uuid:%s does not exist", u.Notification.UUID)
 	}
-
-	a.addUpdate(u)
 
 	// activate torrent
 	log.Printf("starting update: %s", u.String())
@@ -214,22 +212,18 @@ func (u *Update) Delete() error {
 	if !u.Stopped {
 		return fmt.Errorf("update has not been stopped")
 	}
-	if u.torrent != nil {
-		for _, f := range u.torrent.Files() {
-			filename := filepath.Join(u.agent.dataDir, f.Path())
-			if _, err := os.Stat(filename); err == nil {
-				if err = os.Remove(filename); err != nil {
-					return err
-				}
-			}
-		}
+
+	filename := filepath.Join(u.agent.dataDir, u.Notification.Info.Name)
+	if err := os.RemoveAll(filename); err != nil {
+		log.Printf("WARNING: failed removing update file %s", filename)
 	}
-	filename := u.MetadataFilename()
-	if _, err := os.Stat(filename); err == nil {
-		if err := os.Remove(filename); err != nil {
-			return err
-		}
+
+	filename = u.MetadataFilename()
+	if err := os.RemoveAll(filename); err != nil {
+		return errors.Wrapf(err, "failed deleting update uuid:%s version:%d",
+			u.Notification.UUID, u.Notification.Version)
 	}
+
 	log.Printf("deleted update: %v", u.String())
 	return nil
 }
