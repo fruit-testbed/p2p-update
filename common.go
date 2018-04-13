@@ -255,6 +255,22 @@ func ActiveMacAddress() ([]byte, error) {
 	return nil, errors.New("No active ethernet available")
 }
 
+// IPv4ofInterface returns the first IPv4 of given interface, or
+// returns nil if there isn't.
+func IPv4ofInterface(name string) net.IP {
+	if iface, err := net.InterfaceByName(name); err == nil {
+		if addrs, err := iface.Addrs(); err == nil {
+			for _, addr := range addrs {
+				ip, _, err := net.ParseCIDR(addr.String())
+				if err == nil && ip.To4() != nil {
+					return ip
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // LocalPeerID returns a PeerID of local machine.
 // If the machine is Raspberry Pi, then it returns the board serial number.
 // Otherwise, it returns the MAC address of the first active network interface.

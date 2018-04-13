@@ -78,10 +78,11 @@ type Key struct {
 
 // Config specifies agent configurations.
 type Config struct {
-	Address string `json:"address"`
-	Server  string `json:"server"`
-	DataDir string `json:"data-dir"`
-	LogFile string `json:"log-file"`
+	Interface string `json:"interface"`
+	Address   string `json:"address"`
+	Server    string `json:"server"`
+	DataDir   string `json:"data-dir"`
+	LogFile   string `json:"log-file"`
 
 	// Public key file for verification
 	PublicKey Key `json:"public-key"`
@@ -114,9 +115,6 @@ func (a *Agent) torrentClientConfig() *torrent.Config {
 	}
 
 	return &torrent.Config{
-		ListenHost: func(_ string) string {
-			return addr
-		},
 		ListenPort:       a.Config.BitTorrent.Port,
 		DataDir:          a.dataDir,
 		Seed:             true,
@@ -218,6 +216,15 @@ func NewAgent(cfg Config) (*Agent, error) {
 	// create required directories if necessary
 	if err = a.createDirs(); err != nil {
 		return nil, err
+	}
+
+	// use the address of interface if it's given
+	if len(a.Config.Address) == 0 && len(a.Config.Interface) > 0 {
+		if ip := IPv4ofInterface(a.Config.Interface); ip != nil {
+			a.Config.Address = fmt.Sprintf("%s:", ip.String())
+			log.Printf("set agent address to %s from interface %s",
+				a.Config.Address, a.Config.Interface)
+		}
 	}
 
 	// create Torrent Client
