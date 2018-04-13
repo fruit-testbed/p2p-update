@@ -307,16 +307,19 @@ func (a *Agent) startGossip() {
 	}
 }
 
-func (a *Agent) readTCP() {
+func (a *Agent) readTCP() error {
 	log.Println("readTCP - starting")
-	code, body, err := fasthttp.Get(nil, fmt.Sprintf("http://%s", a.Config.Server))
+	url := fmt.Sprintf("http://%s", a.Config.Server)
+	code, body, err := fasthttp.Get(nil, url)
 	if code != 200 || err != nil {
-		log.Printf("readTCP - failed getting updates from server, status code: %d, error: %v", code, err)
-		return
+		err := errors.Errorf("readTCP - failed getting updates from %s, status code: %d, error: %v", url, code, err)
+		log.Println(err)
+		return err
 	}
-	if err := json.Unmarshal(body, bufNotifications); err != nil {
-		log.Printf("readTCP - failed decoding notifications: %v", err)
-		return
+	if err := json.Unmarshal(body, &bufNotifications); err != nil {
+		err := errors.Errorf("readTCP - failed decoding notifications from %s, body: %s, : %v", url, string(body), err)
+		log.Println(err)
+		return err
 	}
 	for _, notification := range bufNotifications {
 		u := NewUpdate(*notification, a)
@@ -330,6 +333,7 @@ func (a *Agent) readTCP() {
 		}
 	}
 	log.Println("readTCP - finished")
+	return nil
 }
 
 func (a *Agent) readOverlay() {
