@@ -111,9 +111,25 @@ func (tp *TorrentPorts) GetFrom(m *stun.Message) error {
 	return err
 }
 
+// Session is a peer's session
+type Session []*net.UDPAddr
+
+// Equal returns true of this and given sessions are the same.
+func (s Session) Equal(ss Session) bool {
+	if len(s) != len(ss) {
+		return false
+	}
+	for i, x := range s {
+		if bytes.Compare(ss[i].IP, x.IP) == 0 && ss[i].Port == x.Port {
+			return false
+		}
+	}
+	return true
+}
+
 // SessionTable is a map whose keys are Peer IDs
 // and values are pairs of [external-addr, internal-addr].
-type SessionTable map[PeerID][]*net.UDPAddr
+type SessionTable map[PeerID]Session
 
 // JSON marshals the SessionTable to JSON and then returns it.
 func (st *SessionTable) JSON() []byte {

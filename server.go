@@ -192,41 +192,30 @@ func (s *Server) serveConn(c net.PacketConn, res, req *stun.Message) error {
 	}
 
 	// Process the STUN message
-	var pid *PeerID
-	if pid, err = s.processMessage(addr, buf[:n], req, res); err != nil {
-		log.Printf("ERROR: processMessage - %v", err)
-		return err
+	if err = s.processMessage(c, addr, buf[:n], req, res); err != nil {
+		return errors.Wrap(err, "ERROR: processMessage")
 	}
-
-	// Send a reply
-	if _, err = c.WriteTo(res.Raw, addr); err != nil {
-		log.Printf("ERROR: WriteTo - %v", err)
-	}
-	log.Printf("Reply sent: %v", res)
-
-	go s.advertiseNewPeer(pid, s.peers[*pid], c)
-
 	return err
 }
 
-func (s *Server) processMessage(addr net.Addr, msg []byte, req, res *stun.Message) (*PeerID, error) {
+func (s *Server) processMessage(c net.PacketConn, addr net.Addr, msg []byte, req, res *stun.Message) error {
 	if !stun.IsMessage(msg) {
-		return nil, errNonSTUNMessage
+		return errNonSTUNMessage
 	}
 	// Convert the packet message to STUN message format
 	if _, err := req.Write(msg); err != nil {
-		return nil, errors.Wrap(err, "Failed to read message")
+		return errors.Wrap(err, "Failed to read message")
 	}
 	if err := validateMessage(req, nil, s.cfg.StunPassword); err != nil {
-		return nil, errors.Wrap(err, "Invalid message")
+		return errors.Wrap(err, "Invalid message")
 	}
 	if req.Type == stun.BindingRequest {
-		return s.registerPeer(addr, req, res)
+		return s.registerPeer(c, addr, req, res)
 	}
-	return nil, fmt.Errorf("message type is not STUN binding")
+	return fmt.Errorf("message type is not STUN binding")
 }
 
-func (s *Server) registerPeer(addr net.Addr, req, res *stun.Message) (*PeerID, error) {
+func (s *Server) registerPeer(c net.PacketConn, addr net.Addr, req, res *stun.Message) error {
 	// Extract Peer's ID, IP, and port from the message, then register it
 	var (
 		pid          = new(PeerID)
@@ -235,20 +224,20 @@ func (s *Server) registerPeer(addr net.Addr, req, res *stun.Message) (*PeerID, e
 	)
 
 	if err := pid.GetFrom(req); err != nil {
-		return nil, errors.Wrap(err, "Failed to read peer ID")
+		return errors.Wrap(err, "Failed to read peer ID")
 	}
 	if err := xorAddr.GetFrom(req); err != nil {
-		return nil, errors.Wrap(err, "failed getting peer internal address")
+		return errors.Wrap(err, "failed getting peer internal address")
 	}
 	if err := torrentPorts.GetFrom(req); err != nil {
-		return nil, errors.Wrap(err, "failed getting torrent-ports")
+		return errors.Wrap(err, "failed getting torrent-ports")
 	}
 
 	s.Lock()
 	defer s.Unlock()
 	switch peer := addr.(type) {
 	case *net.UDPAddr:
-		s.peers[*pid] = []*net.UDPAddr{
+		session := Session{
 			peer, // external IP/port
 			&net.UDPAddr{ // internal IP/port
 				IP:   xorAddr.IP,
@@ -263,12 +252,18 @@ func (s *Server) registerPeer(addr net.Addr, req, res *stun.Message) (*PeerID, e
 				Port: torrentPorts[1],
 			},
 		}
+		if old, ok := s.peers[*pid]; ok && old.Equal(session) {
+			// nothing to update
+			return nil
+		}
+		s.peers[*pid] = session
 		log.Printf("Registered peer %s[%s,%s,%s,%s]", pid.String(), s.peers[*pid][0].String(),
 			s.peers[*pid][1].String(), s.peers[*pid][2].String(), s.peers[*pid][3].String())
 	default:
-		return nil, fmt.Errorf("unknown addr: %v", addr)
+		return fmt.Errorf("unknown addr: %v", addr)
 	}
-	return pid, res.Build(
+
+	err := res.Build(
 		stun.NewTransactionIDSetter(req.TransactionID),
 		stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
 		&stun.XORMappedAddress{
@@ -280,20 +275,31 @@ func (s *Server) registerPeer(addr net.Addr, req, res *stun.Message) (*PeerID, e
 		stun.NewShortTermIntegrity(s.cfg.StunPassword),
 		stun.Fingerprint,
 	)
+	if err != nil {
+		return errors.Wrapf(err, "failed building reply message for %s", *pid)
+	}
+
+	if _, err = c.WriteTo(res.Raw, addr); err != nil {
+		return errors.Wrapf(err, "ERROR: WriteTo %s", addr)
+	}
+
+	go s.advertiseNewPeer(pid, s.peers[*pid], c)
+
+	return nil
 }
 
-func (s *Server) advertiseNewPeer(pid *PeerID, addrs []*net.UDPAddr, c net.PacketConn) {
+func (s *Server) advertiseNewPeer(pid *PeerID, sess Session, c net.PacketConn) {
 	msg, err := stun.Build(
 		stun.TransactionID,
 		stunBindingIndication,
 		&s.ID,
-		&SessionTable{*pid: addrs},
+		&SessionTable{*pid: sess},
 		stun.NewShortTermIntegrity(s.cfg.StunPassword),
 		stun.Fingerprint,
 	)
 	if err != nil {
 		log.Printf("cannot build message to advertise new peer %s[%s][%s]: %v",
-			pid.String(), addrs[0].String(), addrs[1].String(), err)
+			pid.String(), sess[0].String(), sess[1].String(), err)
 		return
 	}
 	for ppid, paddrs := range s.peers {
@@ -304,7 +310,7 @@ func (s *Server) advertiseNewPeer(pid *PeerID, addrs []*net.UDPAddr, c net.Packe
 			log.Printf("ERROR: WriteTo - %v", err)
 		} else {
 			log.Printf("advertise %s[%s][%s] to %s[%s][%s]",
-				pid.String(), addrs[0].String(), addrs[1].String(),
+				pid.String(), sess[0].String(), sess[1].String(),
 				ppid.String(), paddrs[0].String(), paddrs[1].String())
 		}
 	}
