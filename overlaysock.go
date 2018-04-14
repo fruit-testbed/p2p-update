@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/gortc/stun"
@@ -83,6 +84,8 @@ type OverlayConfig struct {
 // that uses STUN punching hole technique to enable peer-to-peer communications
 // for nodes behind NATs.
 type OverlayConn struct {
+	sync.RWMutex
+
 	ID     PeerID
 	Reopen bool
 	Config *OverlayConfig
@@ -104,6 +107,8 @@ type OverlayConn struct {
 
 	readDeadline  *time.Time
 	writeDeadline *time.Time
+
+	quitKeepAlive chan struct{}
 }
 
 // NewOverlayConn creates an overlay peer-to-peer connection that implements STUN
@@ -142,6 +147,21 @@ func NewOverlayConn(cfg OverlayConfig) (*OverlayConn, error) {
 
 	j, _ = json.Marshal(overlay.Config)
 	log.Printf("created overlayconn with config: %s", string(j))
+
+	msg, err := stun.Build(
+		stun.TransactionID,
+		stunChannelBindIndication,
+		&overlay.ID,
+		stun.NewShortTermIntegrity(overlay.Config.StunPassword),
+		stun.Fingerprint,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	overlay.quitKeepAlive = ExecEvery(
+		time.Duration(cfg.ChannelLifespan)*time.Second,
+		overlay.keepAlive(msg))
 
 	return overlay, nil
 }
@@ -194,6 +214,8 @@ func (overlay *OverlayConn) closed([]interface{}) {
 		}
 		log.Println("old conn and stun are closed")
 	}()
+
+	overlay.quitKeepAlive <- struct{}{}
 
 	overlay.conn = nil
 	overlay.stun = nil
@@ -256,8 +278,8 @@ func (overlay *OverlayConn) binding([]interface{}) {
 		} else if err = overlay.externalAddr.GetFrom(e.Message); err != nil {
 			log.Println("failed getting mapped address:", err)
 			overlay.automata.Event(eventError)
-		} else if err = overlay.bindPeerChannel(e.Message); err != nil {
-			log.Println("failed processing session table:", err)
+		} else if err = overlay.updateSessionTable(e.Message); err != nil {
+			log.Println("failed updating session table:", err)
 			overlay.automata.Event(eventError)
 		} else {
 			log.Println("XORMappedAddress", overlay.externalAddr)
@@ -374,7 +396,7 @@ func (overlay *OverlayConn) processingMessage([]interface{}) {
 	err = nil
 	switch req.Type {
 	case stunBindingIndication:
-		err = overlay.bindPeerChannel(&req)
+		err = overlay.updateSessionTable(&req)
 	case stunDataRequest:
 		err = overlay.peerDataRequest(pid, overlay.addr, &req)
 	case stunChannelBindIndication:
@@ -409,47 +431,50 @@ func (overlay *OverlayConn) peerDataRequest(pid *PeerID, addr *net.UDPAddr, req 
 	}
 }
 
-func (overlay *OverlayConn) bindPeerChannel(req *stun.Message) error {
-	var (
-		st   *SessionTable
-		addr *net.UDPAddr
-		msg  *stun.Message
-		err  error
-	)
-
-	if st, err = GetSessionTableFrom(req); err != nil {
-		return err
-	}
-	msg, err = stun.Build(
-		stun.TransactionID,
-		stunChannelBindIndication,
-		&overlay.ID,
-		stun.NewShortTermIntegrity(overlay.Config.StunPassword),
-		stun.Fingerprint,
-	)
+func (overlay *OverlayConn) updateSessionTable(req *stun.Message) error {
+	st, err := GetSessionTableFrom(req)
 	if err != nil {
-		return errors.Wrap(err, "failed creating channelBindIndication message")
+		return errors.Wrap(err, "updateSessionTable - failed getting session table from message")
 	}
-	for id, addrs := range *st {
-		if id == overlay.ID {
-			continue
-		}
-		if addr = addrs[0]; addr.IP.Equal(overlay.externalAddr.IP) {
-			addr = addrs[1]
-		}
-		if err == nil {
-			_, err = overlay.conn.conn.WriteToUDP(msg.Raw, addr)
-		}
-		if err != nil {
-			log.Printf("WARNING: failed binding channel to %s[%s][%s] - %v",
-				id, addrs[0].String(), addrs[1].String(), err)
-		} else {
-			overlay.peers[id] = addrs
-			//log.Printf("-> sent channelBind request to %s[%s][%s] ",
-			//	id, addrs[0].String(), addrs[1].String())
-		}
+	overlay.Lock()
+	defer overlay.Unlock()
+	for id, sess := range *st {
+		overlay.peers[id] = sess
 	}
 	return nil
+}
+
+func (overlay *OverlayConn) keepAlive(msg *stun.Message) func() {
+	return func() {
+		log.Println("sending keep alive packet")
+		// send to server
+		overlay.conn.conn.WriteToUDP(msg.Raw, overlay.rendezvousAddr)
+
+		// send to peers
+		state := overlay.automata.Current()
+		switch state {
+		case stateListening, stateProcessingMessage, stateMessageError:
+			overlay.RLock()
+			for id, addrs := range overlay.peers {
+				if id == overlay.ID {
+					continue
+				}
+				addr := addrs[0]
+				if addr.IP.Equal(overlay.externalAddr.IP) {
+					addr = addrs[1]
+				}
+				_, err := overlay.conn.conn.WriteToUDP(msg.Raw, addr)
+				if err != nil {
+					log.Printf("WARNING: failed binding channel to %s[%s][%s] - %v",
+						id, addrs[0].String(), addrs[1].String(), err)
+				}
+			}
+			overlay.RUnlock()
+		default:
+			log.Printf("overlay is at state %s", state.String())
+		}
+		log.Println("sent keep alive packet")
+	}
 }
 
 func (overlay *OverlayConn) buildDataErrorMessage(req, res *stun.Message, ec stun.ErrorCode) error {
@@ -579,6 +604,8 @@ func (overlay *OverlayConn) multicastMessage(data PeerMessage) (int, error) {
 		return 0, errors.Wrap(err, "failed create data request message")
 	}
 
+	overlay.RLock()
+	defer overlay.RUnlock()
 	for id, addrs := range overlay.peers {
 		if id == overlay.ID {
 			continue
@@ -593,7 +620,6 @@ func (overlay *OverlayConn) multicastMessage(data PeerMessage) (int, error) {
 			log.Printf("WARNING: failed sending data request to %s[%s][%s] - %v",
 				id, addrs[0].String(), addrs[1].String(), err)
 		} else {
-			overlay.peers[id] = addrs
 			log.Printf("-> sent data request to %s[%s][%s] ",
 				id, addrs[0].String(), addrs[1].String())
 		}
