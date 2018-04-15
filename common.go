@@ -241,6 +241,9 @@ func RaspberryPiSerial() (*PeerID, error) {
 			)
 
 			s := strings.TrimLeft(strings.Split(line, " ")[1], "0")
+			if len(s)%2 == 1 {
+				s = fmt.Sprintf("0%s", s)
+			}
 			if serial, err = hex.DecodeString(s); err != nil {
 				return nil, errors.Wrapf(err, "failed converting %s to []byte", s)
 			}
