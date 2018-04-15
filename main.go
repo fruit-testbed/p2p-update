@@ -192,7 +192,7 @@ func main() {
 	app := cli.NewApp()
 
 	app.Usage = "Peer-to-peer secure update"
-	app.Version = "0.0.1"
+	app.Version = "0.1.0"
 	app.EnableBashCompletion = true
 
 	homeDir := "~/"
