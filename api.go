@@ -197,7 +197,21 @@ func (a *API) requestPostUpdate(ctx *fasthttp.RequestCtx) {
 		}
 		log.Printf("failed to activating the torrent: %v", err)
 	} else {
+		go a.rebroadcastUpdate(string(u.Notification.UUID), u.Notification.Version)
 		ctx.Response.SetStatusCode(200)
+	}
+}
+
+// rebroadcastUpdate broadcasts given update every minute within 5 minutes.
+func (a *API) rebroadcastUpdate(uuid string, version uint64) {
+	var update *Update
+	for i := 0; i < 5; i++ {
+		update = a.agent.getUpdate(uuid)
+		if update == nil || update.Notification.Version != version {
+			break
+		}
+		update.Send(a.agent)
+		time.Sleep(time.Minute)
 	}
 }
 
