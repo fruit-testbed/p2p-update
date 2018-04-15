@@ -48,5 +48,4 @@ Legends:
 
 
 Known issues:
-- binding always errors when there are more than 4 clients - server needs to be restarted
 - RaspberryPiSerial() doesn't work on RPi1
