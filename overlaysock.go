@@ -395,7 +395,7 @@ func (overlay *OverlayConn) processingMessage([]interface{}) {
 
 	err = nil
 	switch req.Type {
-	case stunBindingIndication:
+	case stun.BindingSuccess, stunBindingIndication:
 		err = overlay.updateSessionTable(&req)
 	case stunDataRequest:
 		err = overlay.peerDataRequest(pid, overlay.addr, &req)
