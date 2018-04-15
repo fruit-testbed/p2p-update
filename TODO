@@ -27,7 +27,7 @@
 [x] implement fallback to TCP when UDP does not work e.g. DCS firewall
 [ ] enable multiple servers -- this allows an agent to join two difference clusters
 [x] test bittorrent on node behind DCS network
-[ ] auto-detect internal IP address (see: https://golang.org/pkg/net/#DialIP)
+[x] auto-detect internal IP address (see: https://golang.org/pkg/net/#DialIP)
 [x] specify network interface to use
 [ ] DisabledUDP option in config -- if true then overlay will be deactivated
 [ ] peer lifetime in session table, delete the entry if it expires

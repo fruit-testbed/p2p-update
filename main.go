@@ -245,7 +245,7 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "server, s",
-					Value: defaultServerAddress,
+					Value: fmt.Sprintf("%s:%d", defaultServerAddr, defaultServerPort),
 					Usage: "Server address",
 				},
 			},

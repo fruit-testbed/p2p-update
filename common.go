@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -32,7 +33,9 @@ const (
 	signatureName = "org.fruit-testbed"
 	softwareName  = "fruit/p2p-update"
 
-	defaultServerAddress  = "fruit-testbed.org:3478"
+	defaultServerAddr = "fruit-testbed.org"
+	defaultServerPort = 3478
+
 	defaultStunPassword   = "P2PupdateIsR0ck"
 	stunMaxPacketDataSize = 56 * 1024
 
@@ -47,6 +50,10 @@ var (
 	stunChannelBindIndication = stun.NewType(stun.MethodChannelBind, stun.ClassIndication)
 
 	errNonSTUNMessage = errors.New("Not STUN Message")
+)
+
+var (
+	rExclude = regexp.MustCompile("^[lo|tun|utun]")
 )
 
 // PeerMessage is a message sent by a peer.
@@ -281,6 +288,45 @@ func IPv4ofInterface(name string) net.IP {
 				if err == nil && ip.To4() != nil {
 					return ip
 				}
+			}
+		}
+	}
+	return nil
+}
+
+// LocalIPv4 returns a local IPv4 address that can be used to connect to internet.
+//
+// This function requires root privilege to work properly because it uses kernel
+// system call to test the IP if it can be used to connect to the internet. Without
+// such privilege, the function always returns nil.
+func LocalIPv4() net.IP {
+	raddr, err := net.ResolveIPAddr("ip", defaultServerAddr)
+	if err != nil {
+		return nil
+	}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+
+	var laddr net.IPAddr
+
+	for _, iface := range ifaces {
+		if rExclude.MatchString(iface.Name) || iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			laddr.IP, _, err = net.ParseCIDR(addr.String())
+			if err != nil && laddr.IP.To4() != nil {
+				continue
+			}
+			_, err = net.DialIP("ip:tcp", &laddr, raddr)
+			if err == nil {
+				return laddr.IP
 			}
 		}
 	}

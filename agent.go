@@ -162,7 +162,7 @@ func DefaultConfig() Config {
 	}
 
 	return Config{
-		Server:  defaultServerAddress,
+		Server:  fmt.Sprintf("%s:%d", defaultServerAddr, defaultServerPort),
 		DataDir: "/var/lib/p2pupdate",
 		LogFile: "/var/log/p2pupdate.log",
 		PublicKey: Key{
@@ -218,11 +218,14 @@ func NewAgent(cfg Config) (*Agent, error) {
 	}
 
 	// use the address of interface if it's given
-	if len(a.Config.Address) == 0 && len(a.Config.Interface) > 0 {
-		if ip := IPv4ofInterface(a.Config.Interface); ip != nil {
+	if len(a.Config.Address) == 0 {
+		ip := IPv4ofInterface(a.Config.Interface)
+		if ip == nil {
+			ip = LocalIPv4()
+		}
+		if ip != nil {
 			a.Config.Address = fmt.Sprintf("%s:", ip.String())
-			log.Printf("set agent address to %s from interface %s",
-				a.Config.Address, a.Config.Interface)
+			log.Printf("set agent address to %s", a.Config.Address)
 		}
 	}
 
