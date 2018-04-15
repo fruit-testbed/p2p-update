@@ -16,7 +16,7 @@
 
 [[constraint]]
   name = "github.com/syncthing/syncthing"
-  version = "0.14.46"
+  version = "0.14.45"
 
 [[constraint]]
   name = "github.com/valyala/fasthttp"

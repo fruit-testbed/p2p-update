@@ -4,8 +4,8 @@
 [[projects]]
   name = "github.com/RoaringBitmap/roaring"
   packages = ["."]
-  revision = "6f670287d7ec5bb044dc8afcc8cb904113fd581a"
-  version = "v0.4.4"
+  revision = "be602e3d1085b6aa8e24907cfbec8d0d3034f2dd"
+  version = "v0.4.5"
 
 [[projects]]
   branch = "master"
@@ -26,7 +26,7 @@
   branch = "master"
   name = "github.com/anacrolix/go-libutp"
   packages = ["."]
-  revision = "5dd53cb61ef096fa0d98c5f791b162d303488970"
+  revision = "66ee1312ae8ff6d0e3fd57cca7d654be6a4fad72"
 
 [[projects]]
   branch = "master"
@@ -86,7 +86,7 @@
     "storage",
     "tracker"
   ]
-  revision = "e9386d10160708ac7681fa8773923c8b434eb83b"
+  revision = "39ccb140362f485a627ef644b95ed8c8409bc817"
 
 [[projects]]
   branch = "master"
@@ -366,7 +366,7 @@
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix"]
-  revision = "3b87a42e500a6dc65dae1a55d0b641295971163e"
+  revision = "2281fa97ef7b0c26324634d5a22f04babdac8713"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -418,6 +418,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "3ab8f1a7bf97424b986105558b21f38f4bc1c6fc3c112ae05a55a15109b399ff"
+  inputs-digest = "bf19a88e0a988ed6ce01b01cd765d7eae1be27fdd19d99976aee932c2b96ae6b"
   solver-name = "gps-cdcl"
   solver-version = 1
