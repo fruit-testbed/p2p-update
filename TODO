@@ -35,11 +35,9 @@
     - RFC 3489 and RFC 5389
     - https://github.com/ccding/go-stun/blob/master/stun/discover.go
 [ ] peer lifetime in session table, delete the entry if it expires
-[ ] apks:
+[x] APK package:
     - stop service before upgrade
-    - start service after upgrade
-    - old config -> /etc/p2p-update/config.json.old
-    - new config -> /etc/p2p-update/config.json
+    - start service after upgrade if it was running before
 
 Legends:
 [x] implemented
