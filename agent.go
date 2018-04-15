@@ -84,6 +84,7 @@ type Config struct {
 	Server    string `json:"server"`
 	DataDir   string `json:"data-dir"`
 	LogFile   string `json:"log-file"`
+	NoUDP     bool   `json:"no-udp"`
 
 	// Public key file for verification
 	PublicKey Key `json:"public-key"`
@@ -119,7 +120,7 @@ func (a *Agent) torrentClientConfig() *torrent.Config {
 		ListenPort:       a.Config.BitTorrent.Port,
 		DataDir:          a.dataDir,
 		Seed:             true,
-		NoDHT:            a.Config.BitTorrent.NoDHT,
+		NoDHT:            a.Config.BitTorrent.NoDHT || a.Config.NoUDP, // DHT uses UDP
 		HTTPUserAgent:    softwareName,
 		Debug:            a.Config.BitTorrent.Debug,
 		DhtStartingNodes: dht.GlobalBootstrapAddrs,
@@ -236,14 +237,19 @@ func NewAgent(cfg Config) (*Agent, error) {
 	}
 	log.Printf("Torrent Client listen at %v", a.torrentClient.ListenAddrs())
 
-	// updated Overlay config
-	a.Config.Overlay.Address = a.Config.Address
-	a.Config.Overlay.Server = a.Config.Server
-	a.Config.Overlay.torrentPorts = [2]int{a.Config.BitTorrent.Port, a.Config.BitTorrent.Port}
+	// create Overlay network
+	if a.Config.NoUDP {
+		log.Println("overlay is disabled since NoUDP = true")
+	} else {
+		// updated Overlay config
+		a.Config.Overlay.Address = a.Config.Address
+		a.Config.Overlay.Server = a.Config.Server
+		a.Config.Overlay.torrentPorts = [2]int{a.Config.BitTorrent.Port, a.Config.BitTorrent.Port}
 
-	// start Overlay network
-	if a.Overlay, err = NewOverlayConn(a.Config.Overlay); err != nil {
-		return nil, err
+		// start Overlay network
+		if a.Overlay, err = NewOverlayConn(a.Config.Overlay); err != nil {
+			return nil, err
+		}
 	}
 
 	// load public key file
@@ -302,7 +308,7 @@ func (a *Agent) startCatchingSignals() {
 func (a *Agent) startGossip() {
 	counter := 0
 	for {
-		if a == nil || !a.Overlay.Ready() {
+		if a.Overlay == nil || !a.Overlay.Ready() {
 			counter++
 			time.Sleep(time.Second)
 			if counter > 300 {
