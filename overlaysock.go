@@ -448,7 +448,9 @@ func (overlay *OverlayConn) keepAlive(msg *stun.Message) func() {
 	return func() {
 		log.Println("sending keep alive packet")
 		// send to server
-		overlay.conn.conn.WriteToUDP(msg.Raw, overlay.rendezvousAddr)
+		if bindMsg, err := overlay.bindingRequestMessage(); err == nil {
+			overlay.conn.conn.WriteToUDP(bindMsg.Raw, overlay.rendezvousAddr)
+		}
 
 		// send to peers
 		state := overlay.automata.Current()
