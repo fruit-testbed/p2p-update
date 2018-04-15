@@ -43,7 +43,3 @@ Legends:
 [x] implemented
 [?] implemented but not tested
 [ ] not implemented
-
-
-Known issues:
-- RaspberryPiSerial() doesn't work on RPi1
