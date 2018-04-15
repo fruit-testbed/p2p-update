@@ -386,6 +386,11 @@ func (a *Agent) loadUpdates() {
 			log.Printf("failed loading update metadata file %s: %v", f.Name(), err)
 			continue
 		}
+		if err = u.Verify(a); err != nil {
+			log.Printf("update verification failed uuid:%s version:%d",
+				u.Notification.UUID, u.Notification.Version)
+			continue
+		}
 		u.Start(a)
 	}
 	log.Printf("Loaded %d updates", len(a.updates))
