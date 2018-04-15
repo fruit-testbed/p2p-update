@@ -193,7 +193,7 @@ func (s *Server) serveConn(c net.PacketConn, res, req *stun.Message) error {
 
 	// Process the STUN message
 	if err = s.processMessage(c, addr, buf[:n], req, res); err != nil {
-		return errors.Wrap(err, "ERROR: processMessage")
+		return errors.Wrapf(err, "ERROR: processMessage from %s", addr.String())
 	}
 	return err
 }
