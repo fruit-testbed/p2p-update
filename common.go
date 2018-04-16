@@ -43,9 +43,7 @@ const (
 )
 
 var (
-	stunDataRequest           = stun.NewType(stun.MethodData, stun.ClassRequest)
-	stunDataSuccess           = stun.NewType(stun.MethodData, stun.ClassSuccessResponse)
-	stunDataError             = stun.NewType(stun.MethodData, stun.ClassErrorResponse)
+	stunDataIndication        = stun.NewType(stun.MethodData, stun.ClassIndication)
 	stunBindingIndication     = stun.NewType(stun.MethodBinding, stun.ClassIndication)
 	stunChannelBindIndication = stun.NewType(stun.MethodChannelBind, stun.ClassIndication)
 

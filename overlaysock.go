@@ -397,8 +397,8 @@ func (overlay *OverlayConn) processingMessage([]interface{}) {
 	switch req.Type {
 	case stun.BindingSuccess, stunBindingIndication:
 		err = overlay.updateSessionTable(&req)
-	case stunDataRequest:
-		err = overlay.peerDataRequest(pid, overlay.addr, &req)
+	case stunDataIndication:
+		err = overlay.peerDataIndication(pid, overlay.addr, &req)
 	case stunChannelBindIndication:
 		log.Printf("<- %s[%s] received channel bind indication", pid, overlay.addr)
 	default:
@@ -413,7 +413,7 @@ func (overlay *OverlayConn) processingMessage([]interface{}) {
 	}
 }
 
-func (overlay *OverlayConn) peerDataRequest(pid *PeerID, addr *net.UDPAddr, req *stun.Message) error {
+func (overlay *OverlayConn) peerDataIndication(pid *PeerID, addr *net.UDPAddr, req *stun.Message) error {
 	// TODO: handle multi-packets payload
 	var (
 		data []byte
@@ -477,27 +477,6 @@ func (overlay *OverlayConn) keepAlive(msg *stun.Message) func() {
 		}
 		log.Println("sent keep alive packet")
 	}
-}
-
-func (overlay *OverlayConn) buildDataErrorMessage(req, res *stun.Message, ec stun.ErrorCode) error {
-	return res.Build(
-		stun.NewTransactionIDSetter(req.TransactionID),
-		stunDataError,
-		ec,
-		&overlay.ID,
-		stun.NewShortTermIntegrity(overlay.Config.StunPassword),
-		stun.Fingerprint,
-	)
-}
-
-func (overlay *OverlayConn) buildDataSuccessMessage(req, res *stun.Message) error {
-	return res.Build(
-		stun.NewTransactionIDSetter(req.TransactionID),
-		stunDataSuccess,
-		&overlay.ID,
-		stun.NewShortTermIntegrity(overlay.Config.StunPassword),
-		stun.Fingerprint,
-	)
 }
 
 func (overlay *OverlayConn) messageError([]interface{}) {
@@ -596,7 +575,7 @@ func (overlay *OverlayConn) multicastMessage(data PeerMessage) (int, error) {
 
 	msg, err = stun.Build(
 		stun.TransactionID,
-		stunDataRequest,
+		stunDataIndication,
 		data,
 		&overlay.ID,
 		stun.NewShortTermIntegrity(overlay.Config.StunPassword),
