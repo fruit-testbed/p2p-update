@@ -101,7 +101,7 @@ type OverlayConn struct {
 
 	channelExpired time.Time
 	msg            []byte
-	addr           *net.UDPAddr
+	senderAddr     *net.UDPAddr
 	peers          SessionTable
 	peerDataChan   chan []byte
 
@@ -359,23 +359,23 @@ func (overlay *OverlayConn) listening([]interface{}) {
 		}
 	} else {
 		overlay.channelExpired = time.Now().Add(overlay.Config.ChannelLifespan * time.Second)
-		overlay.msg, overlay.addr = buf[:n], addr
+		overlay.msg, overlay.senderAddr = buf[:n], addr
 		overlay.automata.Event(eventSuccess)
 	}
 }
 
 func (overlay *OverlayConn) parseHeader(req *stun.Message) (*PeerID, error) {
 	if !stun.IsMessage(overlay.msg) {
-		return nil, fmt.Errorf("!!! %s sent a message that is not a STUN message", overlay.addr)
+		return nil, fmt.Errorf("!!! %s sent a message that is not a STUN message", overlay.senderAddr)
 	} else if _, err := req.Write(overlay.msg); err != nil {
-		return nil, fmt.Errorf("failed to read message from %s: %v", overlay.addr, err)
+		return nil, fmt.Errorf("failed to read message from %s: %v", overlay.senderAddr, err)
 	} else if err := validateMessage(req, nil, overlay.Config.StunPassword); err != nil {
-		return nil, fmt.Errorf("%s sent invalid STUN message: %v", overlay.addr, err)
+		return nil, fmt.Errorf("%s sent invalid STUN message: %v", overlay.senderAddr, err)
 	}
 
 	pid := new(PeerID)
 	if err := pid.GetFrom(req); err != nil {
-		return nil, fmt.Errorf("failed to get peerID of %s: %v", overlay.addr, err)
+		return nil, fmt.Errorf("failed to get peerID of %s: %v", overlay.senderAddr, err)
 	}
 	return pid, nil
 }
@@ -393,7 +393,7 @@ func (overlay *OverlayConn) processingMessage([]interface{}) {
 		return
 	}
 
-	err = fmt.Errorf("!! %s[%s] sent a bad message - type:%v", pid, overlay.addr, req.Type)
+	err = fmt.Errorf("!! %s[%s] sent a bad message - type:%v", pid, overlay.senderAddr, req.Type)
 	switch req.Type.Method {
 	case stun.MethodBinding:
 		switch req.Type.Class {
@@ -403,12 +403,12 @@ func (overlay *OverlayConn) processingMessage([]interface{}) {
 	case stun.MethodData:
 		switch req.Type.Class {
 		case stun.ClassIndication:
-			err = overlay.peerDataIndication(pid, overlay.addr, &req)
+			err = overlay.peerDataIndication(pid, overlay.senderAddr, &req)
 		}
 	case stun.MethodChannelBind:
 		switch req.Type.Class {
 		case stun.ClassIndication:
-			log.Printf("<- %s[%s] received channel bind indication", pid, overlay.addr)
+			log.Printf("<- %s[%s] received channel bind indication", pid, overlay.senderAddr)
 			err = nil
 		}
 	}
