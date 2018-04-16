@@ -26,6 +26,7 @@ var (
 	strV1              = []byte("v1")
 
 	pathConfig          = []byte("/config")
+	pathOverlay         = []byte("/overlay")
 	pathOverlayPeers    = []byte("/overlay/peers")
 	pathUpdate          = []byte("/update")
 	pathTorrentDhtNodes = []byte("/torrent/dht/nodes")
@@ -54,6 +55,8 @@ func (a *API) requestHandler(ctx *fasthttp.RequestCtx) {
 		a.requestConfig(ctx)
 	case bytes.Compare(ctx.Path(), pathOverlayPeers) == 0:
 		a.requestOverlayPeers(ctx)
+	case bytes.Compare(ctx.Path(), pathOverlay) == 0:
+		a.requestOverlay(ctx)
 	case rUpdateURL.Match(ctx.Path()):
 		a.requestUpdateWithParam(ctx)
 	case bytes.Compare(ctx.Path(), pathUpdate) == 0:
@@ -220,6 +223,25 @@ func (a *API) requestOverlayPeers(ctx *fasthttp.RequestCtx) {
 	case bytes.Compare(ctx.Method(), strGET) == 0:
 		ctx.Response.Header.Set("Content-Type", "application/json")
 		ctx.Response.SetBody(a.agent.Overlay.peers.JSON())
+	default:
+		ctx.Response.SetStatusCode(400)
+	}
+}
+
+func (a *API) requestOverlay(ctx *fasthttp.RequestCtx) {
+	switch {
+	case bytes.Compare(ctx.Method(), strGET) == 0:
+		ctx.Response.Header.Set("Content-Type", "application/json")
+		state := struct {
+			ID        string `json:"id"`
+			State     string `json:"state"`
+			LocalAddr string `json:"address"`
+		}{
+			ID:        a.agent.Overlay.ID.String(),
+			State:     a.agent.Overlay.automata.Current().String(),
+			LocalAddr: a.agent.Overlay.localAddr.String(),
+		}
+		doJSONWrite(ctx, 200, state)
 	default:
 		ctx.Response.SetStatusCode(400)
 	}

@@ -38,6 +38,7 @@
 [x] APK package:
     - stop service before upgrade
     - start service after upgrade if it was running before
+[x] GET /overlay - return the overlay's id, state, address, and port
 
 Legends:
 [x] implemented
