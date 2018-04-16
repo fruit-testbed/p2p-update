@@ -393,16 +393,24 @@ func (overlay *OverlayConn) processingMessage([]interface{}) {
 		return
 	}
 
-	err = nil
-	switch req.Type {
-	case stun.BindingSuccess, stunBindingIndication:
-		err = overlay.updateSessionTable(&req)
-	case stunDataIndication:
-		err = overlay.peerDataIndication(pid, overlay.addr, &req)
-	case stunChannelBindIndication:
-		log.Printf("<- %s[%s] received channel bind indication", pid, overlay.addr)
-	default:
-		err = fmt.Errorf("!! %s[%s] sent a bad message - type:%v", pid, overlay.addr, req.Type)
+	err = fmt.Errorf("!! %s[%s] sent a bad message - type:%v", pid, overlay.addr, req.Type)
+	switch req.Type.Method {
+	case stun.MethodBinding:
+		switch req.Type.Class {
+		case stun.ClassSuccessResponse, stun.ClassIndication:
+			err = overlay.updateSessionTable(&req)
+		}
+	case stun.MethodData:
+		switch req.Type.Class {
+		case stun.ClassIndication:
+			err = overlay.peerDataIndication(pid, overlay.addr, &req)
+		}
+	case stun.MethodChannelBind:
+		switch req.Type.Class {
+		case stun.ClassIndication:
+			log.Printf("<- %s[%s] received channel bind indication", pid, overlay.addr)
+			err = nil
+		}
 	}
 
 	if err == nil {
