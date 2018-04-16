@@ -265,7 +265,7 @@ func (s *Server) registerPeer(c net.PacketConn, addr net.Addr, req, res *stun.Me
 
 	err := res.Build(
 		stun.NewTransactionIDSetter(req.TransactionID),
-		stun.NewType(stun.MethodBinding, stun.ClassSuccessResponse),
+		stun.BindingSuccess,
 		&stun.XORMappedAddress{
 			IP:   s.peers[*pid][0].IP,
 			Port: s.peers[*pid][0].Port,
