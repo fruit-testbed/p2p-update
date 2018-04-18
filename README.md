@@ -28,7 +28,7 @@ dep ensure
 This generates an executable binary file: `p2pupdate`.
 
 
-## To run the server
+## To run the server
 
 ```
 ./p2pupdate server
