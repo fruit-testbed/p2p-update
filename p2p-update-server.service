@@ -1,0 +1,13 @@
+[Unit]
+Description=P2P Update Server
+After=network.target
+
+[Service]
+EnvironmentFile=/etc/default/p2p-update-server
+ExecStart=/usr/sbin/p2p-update server $OPTS
+Restart=on-failure
+WatchdogSec=1800
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

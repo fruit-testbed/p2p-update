@@ -1,0 +1,1 @@
+OPTS="-k /etc/p2p-update/fruit-key.rsa.pub -s 60"
