@@ -239,7 +239,7 @@ func (a *API) requestOverlay(ctx *fasthttp.RequestCtx) {
 		}{
 			ID:        a.agent.Overlay.ID.String(),
 			State:     a.agent.Overlay.automata.Current().String(),
-			LocalAddr: a.agent.Overlay.localAddr.String(),
+			LocalAddr: a.agent.Overlay.LocalAddr().String(),
 		}
 		doJSONWrite(ctx, 200, state)
 	default:

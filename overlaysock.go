@@ -623,7 +623,7 @@ func (overlay *OverlayConn) Close() error {
 
 // LocalAddr returns local (internal) address of this overlay.
 func (overlay *OverlayConn) LocalAddr() net.Addr {
-	return overlay.localAddr
+	return overlay.conn.conn.LocalAddr()
 }
 
 // RemoteAddr returns remote (external) address of this overlay
