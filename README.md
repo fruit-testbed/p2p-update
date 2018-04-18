@@ -13,34 +13,42 @@ The framework combines several key techniques:
 This project is part of Federated RaspberryPi micro-Infrastructure Testbed - [FRuIT](https://fruit-testbed.org).
 
 
-Requirements to compile:
+## To build
+
+Requirements:
 - Go version >=1.9
-- Go libraries:
-  - github.com/vmihailenco/msgpack
-  - github.com/spacemonkeygo/openssl
-  - gopkg.in/urfave/cli.v1
-  - github.com/anacrolix/torrent
-  - github.com/valyala/fasthttp
-  - github.com/zeebo/bencode
+- dep (https://github.com/golang/dep)
+
+```
+cd p2p-update
+dep ensure
+./build
+```
+
+This generates an executable binary file: `p2pupdate`.
 
 
-Requirements to run on FruitOS/Alpine Linux:
-- musl
-- libstdc++
-- libcrypto1.0
-- libssl1.0
-- libgcc
-- zlib
+## To run the server
+
+```
+./p2pupdate server
+```
+
+The server runs a lightweight STUN service to bootstrap a new peer and advertise
+its session to existing peers. Both the update notification and file are distributed
+using peer-to-peer protocols.
 
 
-- To run the STUN server
+## To run the agent
 
-    ```
-    $ p2pupdate server --address 0.0.0.0:3478
-    ```
+```
+./p2pupdate agent
+```
 
-- To run the agent
+Option `--config-file` is used to pass a custom config file.
 
-    ```
-    $ p2pupdate agent -server fruit-testbed.org:3478 --address 10.0.0.5:9322
-    ```
+Option `--default-config` prints default configuration to standard output.
+
+
+
+License: Apache Version 2.0.
