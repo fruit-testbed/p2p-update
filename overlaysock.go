@@ -108,7 +108,7 @@ type OverlayConn struct {
 	readDeadline  *time.Time
 	writeDeadline *time.Time
 
-	quitKeepAlive chan struct{}
+	stopSendingKeepAlive chan struct{}
 }
 
 // NewOverlayConn creates an overlay peer-to-peer connection that implements STUN
@@ -159,9 +159,9 @@ func NewOverlayConn(cfg OverlayConfig) (*OverlayConn, error) {
 		return nil, err
 	}
 
-	overlay.quitKeepAlive = ExecEvery(
+	overlay.stopSendingKeepAlive = ExecEvery(
 		time.Duration(cfg.ChannelLifespan)*time.Second,
-		overlay.keepAlive(msg))
+		overlay.sendKeepAlive(msg))
 
 	return overlay, nil
 }
@@ -203,7 +203,7 @@ func (overlay *OverlayConn) createAutomata() {
 
 func (overlay *OverlayConn) closed([]interface{}) {
 	log.Println("closing")
-
+	overlay.Lock()
 	conn, stun := overlay.conn, overlay.stun
 	go func() {
 		if conn != nil {
@@ -214,18 +214,17 @@ func (overlay *OverlayConn) closed([]interface{}) {
 		}
 		log.Println("old conn and stun are closed")
 	}()
-
-	overlay.quitKeepAlive <- struct{}{}
-
 	overlay.conn = nil
 	overlay.stun = nil
 	overlay.errCount = 0
+	overlay.Unlock()
 	log.Println("closed")
 
 	if overlay.Reopen {
 		log.Println("reopen")
 		overlay.automata.Event(eventOpen)
 	} else {
+		overlay.stopSendingKeepAlive <- struct{}{}
 		log.Println("overlay is stopped")
 	}
 }
@@ -452,9 +451,11 @@ func (overlay *OverlayConn) updateSessionTable(req *stun.Message) error {
 	return nil
 }
 
-func (overlay *OverlayConn) keepAlive(msg *stun.Message) func() {
+func (overlay *OverlayConn) sendKeepAlive(msg *stun.Message) func() {
 	return func() {
 		log.Println("sending keep alive packet")
+		overlay.RLock()
+		defer overlay.RUnlock()
 		// send to server
 		if bindMsg, err := overlay.bindingRequestMessage(); err == nil {
 			overlay.conn.conn.WriteToUDP(bindMsg.Raw, overlay.rendezvousAddr)
@@ -464,7 +465,6 @@ func (overlay *OverlayConn) keepAlive(msg *stun.Message) func() {
 		state := overlay.automata.Current()
 		switch state {
 		case stateListening, stateProcessingMessage, stateMessageError:
-			overlay.RLock()
 			for id, addrs := range overlay.peers {
 				if id == overlay.ID {
 					continue
@@ -479,7 +479,6 @@ func (overlay *OverlayConn) keepAlive(msg *stun.Message) func() {
 						id, addrs[0].String(), addrs[1].String(), err)
 				}
 			}
-			overlay.RUnlock()
 		default:
 			log.Printf("overlay is at state %s", state.String())
 		}
