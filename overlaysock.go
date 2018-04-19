@@ -456,6 +456,9 @@ func (overlay *OverlayConn) sendKeepAlive(msg *stun.Message) func() {
 		log.Println("sending keep alive packet")
 		overlay.RLock()
 		defer overlay.RUnlock()
+		if overlay.conn == nil {
+			return
+		}
 		// send to server
 		if bindMsg, err := overlay.bindingRequestMessage(); err == nil {
 			overlay.conn.conn.WriteToUDP(bindMsg.Raw, overlay.rendezvousAddr)
