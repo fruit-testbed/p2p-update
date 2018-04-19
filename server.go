@@ -271,7 +271,7 @@ func (s *Server) registerPeer(c net.PacketConn, addr net.Addr, req, res *stun.Me
 			Port: s.peers[*pid][0].Port,
 		},
 		&s.ID,
-		&s.peers,
+		&SessionTable{},
 		stun.NewShortTermIntegrity(s.cfg.StunPassword),
 		stun.Fingerprint,
 	)
@@ -284,6 +284,9 @@ func (s *Server) registerPeer(c net.PacketConn, addr net.Addr, req, res *stun.Me
 	}
 
 	go s.advertiseNewPeer(pid, s.peers[*pid], c)
+
+	var msg stun.Message
+	go s.advertiseSessionTableToPeer(&msg, *pid)
 
 	return nil
 }
@@ -319,27 +322,42 @@ func (s *Server) advertiseNewPeer(pid *PeerID, sess Session, c net.PacketConn) {
 func (s *Server) advertiseSessionTable() {
 	s.RLock()
 	defer s.RUnlock()
-	msg, err := stun.Build(
-		stun.TransactionID,
-		stunBindingIndication,
-		&s.ID,
-		&s.peers,
-		stun.NewShortTermIntegrity(s.cfg.StunPassword),
-		stun.Fingerprint,
-	)
-	if err != nil {
-		log.Printf("cannot build message to advertise session table: %v", err)
-	} else {
-		nerr := 0
-		for id, addrs := range s.peers {
-			if _, err = s.udpConn.WriteTo(msg.Raw, addrs[0]); err != nil {
-				log.Printf("WARNING: failed sent session table message to %s[%s][%s]: %v",
-					id, addrs[0].String(), addrs[1].String(), err)
-				nerr++
-			}
-		}
-		log.Printf("sent session table to %d peers with %d failures", len(s.peers), nerr)
+
+	var msg stun.Message
+	for pid := range s.peers {
+		s.advertiseSessionTableToPeer(&msg, pid)
 	}
+}
+
+func (s *Server) advertiseSessionTableToPeer(msg *stun.Message, dest PeerID) {
+	destAddrs, ok := s.peers[dest]
+	if !ok {
+		return
+	}
+	destAddr := destAddrs[0]
+
+	nerr := 0
+	for pid, sess := range s.peers {
+		if pid == dest {
+			continue
+		}
+		msg.Reset()
+		err := msg.Build(
+			stun.TransactionID,
+			stunBindingIndication,
+			&s.ID,
+			&SessionTable{pid: sess},
+			stun.NewShortTermIntegrity(s.cfg.StunPassword),
+			stun.Fingerprint)
+		if err != nil {
+			nerr++
+			continue
+		}
+		if _, err := s.udpConn.WriteToUDP(msg.Raw, destAddr); err != nil {
+			nerr++
+		}
+	}
+	log.Printf("sent session table to %s with %d failures", dest, nerr)
 }
 
 func (s *Server) saveUpdates() {
