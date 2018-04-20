@@ -112,10 +112,10 @@ func (s *Server) run(wg *sync.WaitGroup) {
 }
 
 func (s *Server) serveTCP() {
+	log.Printf("Serving TCP (HTTP) at %s", s.Addr.String())
 	if err := fasthttp.ListenAndServe(s.Addr.String(), s.serveHTTPRequest); err != nil {
 		log.Fatalf("failed serving TCP at %s - %v", s.Addr.String(), err)
 	}
-	log.Printf("Serving HTTP at %s", s.Addr.String())
 }
 
 func (s *Server) serveHTTPRequest(ctx *fasthttp.RequestCtx) {
@@ -160,7 +160,7 @@ func (s *Server) serveUDP() {
 	ExecEvery(time.Duration(s.cfg.SessionAdvertiseTime)*time.Second, s.advertiseSessionTable)
 	ExecEvery(time.Duration(s.cfg.SnapshotTime)*time.Second, s.saveUpdates)
 
-	log.Printf("Serving at %s with id:%s", s.Addr.String(), s.ID.String())
+	log.Printf("Serving UDP (STUN) at %s with id:%s", s.Addr.String(), s.ID.String())
 
 	jobs := make(chan stunRequestJob, 100)
 	for w := 1; w <= 3; w++ {
@@ -208,6 +208,7 @@ type stunRequestJob struct {
 
 func (s *Server) udpWorker(id int, jobs <-chan stunRequestJob) {
 	for j := range jobs {
+		log.Printf("worker %d - processMessage from %s", id, j.addr)
 		if err := s.processMessage(j.conn, j.addr, j.request, j.response); err != nil {
 			log.Printf("worker %d - ERROR: processMessage from %s: %v", id, j.addr, err)
 		}
