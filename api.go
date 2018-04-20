@@ -131,7 +131,7 @@ func (a *API) requestBroadcastUpdateWithUUID(ctx *fasthttp.RequestCtx, uuid []by
 		ctx.Response.SetStatusCode(404)
 		return
 	}
-	if err := update.Send(a.agent); err != nil {
+	if err := update.Notification.Write(a.agent.Overlay); err != nil {
 		log.Printf("requestBroadcastUpdateWithUUID - failed uuid:%s - %v",
 			string(uuid), err)
 		ctx.Response.SetStatusCode(500)
@@ -213,7 +213,7 @@ func (a *API) rebroadcastUpdate(uuid string, version uint64) {
 		if update == nil || update.Notification.Version != version {
 			break
 		}
-		update.Send(a.agent)
+		update.Notification.Write(a.agent.Overlay)
 		time.Sleep(time.Minute)
 	}
 }

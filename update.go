@@ -164,7 +164,7 @@ func (u *Update) monitor(a *Agent) {
 			break
 		}
 		if !u.Sent {
-			if err := u.Send(a); err != nil {
+			if err := u.Notification.Write(a.Overlay); err != nil {
 				log.Printf("failed sending update uuid:%s version:%d : %v",
 					u.Notification.UUID, u.Notification.Version, err)
 			} else {
@@ -226,11 +226,6 @@ func (u *Update) Delete() error {
 
 	log.Printf("deleted update: %v", u.String())
 	return nil
-}
-
-// Send sends the Update to the peers.
-func (u *Update) Send(a *Agent) error {
-	return u.Notification.Write(a.Overlay)
 }
 
 func (u *Update) String() string {
