@@ -72,13 +72,15 @@ func submitCmd(ctx *cli.Context) error {
 		return json.NewEncoder(w).Encode(&u)
 	}
 
+	if err = submitToAgent(&u, ctx.String("unix-socket")); err != nil {
+		return errors.Wrap(err, "failed submitting to agent")
+	}
 	if serverAddr := ctx.String("server"); len(serverAddr) > 0 {
 		if err = submitToServer(&u, serverAddr); err != nil {
-			return err
+			return errors.Wrap(err, "failed submitting to server")
 		}
 	}
-
-	return submitToAgent(&u, ctx.String("unix-socket"))
+	return nil
 }
 
 func submitToServer(u *Update, addr string) error {
