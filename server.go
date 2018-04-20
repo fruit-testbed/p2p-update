@@ -153,6 +153,44 @@ func (s *Server) servePostRequest(ctx *fasthttp.RequestCtx) {
 	if err != nil {
 		log.Println(string(ctx.PostBody()))
 		ctx.SetStatusCode(403)
+	} else {
+		s.sendUpdateNotificationOverUDP(&n)
+	}
+}
+
+func (s *Server) sendUpdateNotificationOverUDP(n *Notification) {
+	// send notification via UDP
+	w := new(bytes.Buffer)
+	if err := n.Write(w); err != nil {
+		log.Printf("sendUpdateNotificationOverUDP - failed generating []byte of notification uuid:%s version:%d - %v", n.UUID, n.Version, err)
+		return
+	}
+	msg := stunMessagePool.Get().(*stun.Message)
+	msg.Reset()
+	defer stunMessagePool.Put(msg)
+	err := msg.Build(
+		stun.TransactionID,
+		stunDataIndication,
+		PeerMessage(w.Bytes()),
+		&s.ID,
+		stun.NewShortTermIntegrity(s.cfg.StunPassword),
+		stun.Fingerprint,
+	)
+	if err != nil {
+		log.Printf("sendUpdateNotificationOverUDP - failed generating stun message: %v", err)
+	}
+
+	s.RLock()
+	defer s.RUnlock()
+	for id, addrs := range s.peers {
+		if err == nil {
+			_, err = s.udpConn.WriteToUDP(msg.Raw, addrs[0])
+		}
+		if err != nil {
+			log.Printf("WARNING: failed sending data request to %s[%s][%s] - %v", id, addrs[0], addrs[1], err)
+		} else {
+			log.Printf("-> sent update notification to %s[%s] ", id, addrs[0])
+		}
 	}
 }
 
