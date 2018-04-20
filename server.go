@@ -182,9 +182,7 @@ func (s *Server) serveUDP() {
 		}
 
 		req := stunMessagePool.Get().(*stun.Message)
-		res := stunMessagePool.Get().(*stun.Message)
 		req.Reset()
-		res.Reset()
 		if _, err := req.Write(msg); err != nil {
 			log.Printf("sender %s: failed to read stun message", addr)
 			stunMessagePool.Put(req)
@@ -195,7 +193,7 @@ func (s *Server) serveUDP() {
 			conn:     conn,
 			addr:     addr,
 			request:  req,
-			response: res,
+			response: stunMessagePool.Get().(*stun.Message),
 		}
 	}
 	//close(jobs)
@@ -211,7 +209,7 @@ type stunRequestJob struct {
 func (s *Server) udpWorker(id int, jobs <-chan stunRequestJob) {
 	for j := range jobs {
 		if err := s.processMessage(j.conn, j.addr, j.request, j.response); err != nil {
-			log.Printf("ERROR: processMessage from %s: %v", j.addr, err)
+			log.Printf("worker %d - ERROR: processMessage from %s: %v", id, j.addr, err)
 		}
 		stunMessagePool.Put(j.request)
 		stunMessagePool.Put(j.response)
@@ -228,7 +226,7 @@ func (s *Server) processMessage(c net.PacketConn, addr net.Addr, req, res *stun.
 	return fmt.Errorf("message type is not STUN binding")
 }
 
-func (s *Server) registerPeer(c net.PacketConn, addr net.Addr, req, res *stun.Message) error {
+func (s *Server) registerPeer(conn net.PacketConn, addr net.Addr, req, res *stun.Message) error {
 	// Extract Peer's ID, IP, and port from the message, then register it
 	var (
 		pid          = new(PeerID)
@@ -246,8 +244,61 @@ func (s *Server) registerPeer(c net.PacketConn, addr net.Addr, req, res *stun.Me
 		return errors.Wrap(err, "failed getting torrent-ports")
 	}
 
+	updated, err := s.updateSessionTable(addr, *pid, &xorAddr, torrentPorts)
+	if err != nil {
+		return errors.Wrap(err, "failed evaluating peer session")
+	}
+	if err := s.sendBindingSuccess(conn, *pid, req, res); err != nil {
+		return errors.Wrap(err, "failed sending binding success response")
+	}
+
+	if updated {
+		s.advertiseNewPeer(*pid, conn, res)
+		s.advertiseSessionTableToPeer(*pid, res)
+	}
+
+	return nil
+}
+
+func (s *Server) sendBindingSuccess(conn net.PacketConn, pid PeerID, req, res *stun.Message) error {
+	s.RLock()
+	session, ok := s.peers[pid]
+	if !ok {
+		return fmt.Errorf("failed sendBindingSuccess: session of peer ID:%s does not exist", pid)
+	}
+	s.RUnlock()
+
+	res.Reset()
+	err := res.Build(
+		stun.NewTransactionIDSetter(req.TransactionID),
+		stun.BindingSuccess,
+		&stun.XORMappedAddress{
+			IP:   session[0].IP,
+			Port: session[0].Port,
+		},
+		&s.ID,
+		&SessionTable{},
+		stun.NewShortTermIntegrity(s.cfg.StunPassword),
+		stun.Fingerprint,
+	)
+	if err != nil {
+		return errors.Wrapf(err, "failed building reply message for %s", pid)
+	}
+	if _, err = conn.WriteTo(res.Raw, session[0]); err != nil {
+		return errors.Wrapf(err, "ERROR: WriteTo %s", session[0])
+	}
+	return nil
+}
+
+func (s *Server) updateSessionTable(
+	addr net.Addr,
+	pid PeerID,
+	xorAddr *stun.XORMappedAddress,
+	torrentPorts TorrentPorts,
+) (bool, error) {
 	s.Lock()
 	defer s.Unlock()
+
 	switch peer := addr.(type) {
 	case *net.UDPAddr:
 		session := Session{
@@ -265,68 +316,48 @@ func (s *Server) registerPeer(c net.PacketConn, addr net.Addr, req, res *stun.Me
 				Port: torrentPorts[1],
 			},
 		}
-		if old, ok := s.peers[*pid]; ok && old.Equal(session) {
-			// nothing to update
-			return nil
+		if old, ok := s.peers[pid]; ok && old.Equal(session) {
+			return false, nil
 		}
-		s.peers[*pid] = session
-		log.Printf("Registered peer %s[%s,%s,%s,%s]", pid.String(), s.peers[*pid][0].String(),
-			s.peers[*pid][1].String(), s.peers[*pid][2].String(), s.peers[*pid][3].String())
-	default:
-		return fmt.Errorf("unknown addr: %v", addr)
+		s.peers[pid] = session
+		log.Printf("Registered peer %s[%s,%s,%s,%s]", pid.String(), session[0].String(),
+			session[1].String(), session[2].String(), session[3].String())
+		return true, nil
 	}
-
-	err := res.Build(
-		stun.NewTransactionIDSetter(req.TransactionID),
-		stun.BindingSuccess,
-		&stun.XORMappedAddress{
-			IP:   s.peers[*pid][0].IP,
-			Port: s.peers[*pid][0].Port,
-		},
-		&s.ID,
-		&SessionTable{},
-		stun.NewShortTermIntegrity(s.cfg.StunPassword),
-		stun.Fingerprint,
-	)
-	if err != nil {
-		return errors.Wrapf(err, "failed building reply message for %s", *pid)
-	}
-
-	if _, err = c.WriteTo(res.Raw, addr); err != nil {
-		return errors.Wrapf(err, "ERROR: WriteTo %s", addr)
-	}
-
-	go s.advertiseNewPeer(pid, s.peers[*pid], c)
-
-	var msg stun.Message
-	go s.advertiseSessionTableToPeer(&msg, *pid)
-
-	return nil
+	return false, fmt.Errorf("unknown addr: %v", addr)
 }
 
-func (s *Server) advertiseNewPeer(pid *PeerID, sess Session, c net.PacketConn) {
-	msg, err := stun.Build(
+func (s *Server) advertiseNewPeer(pid PeerID, c net.PacketConn, msg *stun.Message) {
+	s.RLock()
+	defer s.RUnlock()
+
+	session, ok := s.peers[pid]
+	if !ok {
+		return
+	}
+
+	msg.Reset()
+	err := msg.Build(
 		stun.TransactionID,
 		stunBindingIndication,
 		&s.ID,
-		&SessionTable{*pid: sess},
+		&SessionTable{pid: session},
 		stun.NewShortTermIntegrity(s.cfg.StunPassword),
 		stun.Fingerprint,
 	)
 	if err != nil {
 		log.Printf("cannot build message to advertise new peer %s[%s][%s]: %v",
-			pid.String(), sess[0].String(), sess[1].String(), err)
-		return
+			pid.String(), session[0].String(), session[1].String(), err)
 	}
 	for ppid, paddrs := range s.peers {
-		if ppid == *pid {
+		if ppid == pid {
 			continue
 		}
 		if _, err = c.WriteTo(msg.Raw, paddrs[0]); err != nil {
 			log.Printf("ERROR: WriteTo - %v", err)
 		} else {
 			log.Printf("advertise %s[%s][%s] to %s[%s][%s]",
-				pid.String(), sess[0].String(), sess[1].String(),
+				pid.String(), session[0].String(), session[1].String(),
 				ppid.String(), paddrs[0].String(), paddrs[1].String())
 		}
 	}
@@ -336,13 +367,15 @@ func (s *Server) advertiseSessionTable() {
 	s.RLock()
 	defer s.RUnlock()
 
-	var msg stun.Message
+	msg := stunMessagePool.Get().(*stun.Message)
 	for pid := range s.peers {
-		s.advertiseSessionTableToPeer(&msg, pid)
+		s.advertiseSessionTableToPeer(pid, msg)
 	}
+	stunMessagePool.Put(msg)
 }
 
-func (s *Server) advertiseSessionTableToPeer(msg *stun.Message, dest PeerID) {
+func (s *Server) advertiseSessionTableToPeer(dest PeerID, msg *stun.Message) {
+	msg.Reset()
 	destAddrs, ok := s.peers[dest]
 	if !ok {
 		return
