@@ -137,14 +137,14 @@ func (s *Server) serveGetRequest(ctx *fasthttp.RequestCtx) {
 
 func (s *Server) servePostRequest(ctx *fasthttp.RequestCtx) {
 	var (
-		m   Notification
+		n   Notification
 		err error
 	)
-	if err = json.Unmarshal(ctx.PostBody(), &m); err == nil {
-		if err = m.Verify(s.publicKey); err == nil {
+	if err = json.Unmarshal(ctx.PostBody(), &n); err == nil {
+		if err = n.Verify(s.publicKey); err == nil {
 			s.Lock()
-			if old, ok := s.updates[m.UUID]; !ok || old.Version < m.Version {
-				s.updates[m.UUID] = &m
+			if old, ok := s.updates[n.UUID]; !ok || old.Version < n.Version {
+				s.updates[n.UUID] = &n
 				s.lastModified = time.Now()
 			}
 			s.Unlock()
