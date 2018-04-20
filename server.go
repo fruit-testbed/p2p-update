@@ -151,8 +151,8 @@ func (s *Server) servePostRequest(ctx *fasthttp.RequestCtx) {
 		}
 	}
 	if err != nil {
-		log.Println(string(ctx.PostBody()))
-		ctx.SetStatusCode(403)
+		log.Printf("failed processing POST request - msg: %s - err: %v", string(ctx.PostBody()), err)
+		ctx.SetStatusCode(500)
 	} else {
 		s.sendUpdateNotificationOverUDP(&n)
 	}
