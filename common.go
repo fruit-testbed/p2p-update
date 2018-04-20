@@ -14,6 +14,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gortc/stun"
@@ -403,4 +404,10 @@ func LoadPublicKey(filename string) (*rsa.PublicKey, error) {
 		return pub, nil
 	}
 	return nil, fmt.Errorf("key type in file %s is not RSA", filename)
+}
+
+var stunMessagePool = sync.Pool{
+	New: func() interface{} {
+		return new(stun.Message)
+	},
 }

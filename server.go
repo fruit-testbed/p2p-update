@@ -107,21 +107,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 func (s *Server) run(wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	conn, err := net.ListenUDP("udp", s.Addr)
-	if err != nil {
-		log.Printf("failed listening UDP at %s - %v", s.Addr.String(), err)
-		return
-	}
-	s.udpConn = conn
-
-	ExecEvery(time.Duration(s.cfg.SessionAdvertiseTime)*time.Second, s.advertiseSessionTable)
-	ExecEvery(time.Duration(s.cfg.SnapshotTime)*time.Second, s.saveUpdates)
-
 	go s.serveTCP()
-
-	if err = s.serve(conn); err != nil {
-		log.Println(err)
-	}
+	s.serveUDP()
 }
 
 func (s *Server) serveTCP() {
@@ -162,50 +149,76 @@ func (s *Server) serveHTTPRequest(ctx *fasthttp.RequestCtx) {
 	ctx.SetStatusCode(400)
 }
 
-func (s *Server) serve(c net.PacketConn) error {
-	var (
-		res = new(stun.Message)
-		req = new(stun.Message)
-	)
+func (s *Server) serveUDP() {
+	conn, err := net.ListenUDP("udp", s.Addr)
+	if err != nil {
+		log.Printf("failed listening UDP at %s - %v", s.Addr.String(), err)
+		return
+	}
+	s.udpConn = conn
+
+	ExecEvery(time.Duration(s.cfg.SessionAdvertiseTime)*time.Second, s.advertiseSessionTable)
+	ExecEvery(time.Duration(s.cfg.SnapshotTime)*time.Second, s.saveUpdates)
 
 	log.Printf("Serving at %s with id:%s", s.Addr.String(), s.ID.String())
+
+	jobs := make(chan stunRequestJob, 100)
+	for w := 1; w <= 3; w++ {
+		go s.udpWorker(w, jobs)
+	}
+
+	buf := make([]byte, 2048)
 	for {
-		if err := s.serveConn(c, res, req); err != nil {
-			log.Printf("WARNING: Served connection with error - %v", err)
+		n, addr, err := conn.ReadFrom(buf)
+		if err != nil {
+			log.Printf("ERROR: ReadFrom %v - %v", addr, err)
+			continue
 		}
-		res.Reset()
+
+		msg := buf[:n]
+		if !stun.IsMessage(msg) {
+			log.Printf("message sent by %s is not STUN", addr)
+			continue
+		}
+
+		req := stunMessagePool.Get().(*stun.Message)
+		res := stunMessagePool.Get().(*stun.Message)
 		req.Reset()
+		res.Reset()
+		if _, err := req.Write(msg); err != nil {
+			log.Printf("sender %s: failed to read stun message", addr)
+			stunMessagePool.Put(req)
+			continue
+		}
+
+		jobs <- stunRequestJob{
+			conn:     conn,
+			addr:     addr,
+			request:  req,
+			response: res,
+		}
+	}
+	//close(jobs)
+}
+
+type stunRequestJob struct {
+	conn     net.PacketConn
+	addr     net.Addr
+	request  *stun.Message
+	response *stun.Message
+}
+
+func (s *Server) udpWorker(id int, jobs <-chan stunRequestJob) {
+	for j := range jobs {
+		if err := s.processMessage(j.conn, j.addr, j.request, j.response); err != nil {
+			log.Printf("ERROR: processMessage from %s: %v", j.addr, err)
+		}
+		stunMessagePool.Put(j.request)
+		stunMessagePool.Put(j.response)
 	}
 }
 
-func (s *Server) serveConn(c net.PacketConn, res, req *stun.Message) error {
-	if c == nil {
-		return nil
-	}
-
-	// Read the packet message
-	buf := make([]byte, 1024)
-	n, addr, err := c.ReadFrom(buf)
-	if err != nil {
-		log.Printf("ERROR: ReadFrom %v - %v", addr, err)
-		return err
-	}
-
-	// Process the STUN message
-	if err = s.processMessage(c, addr, buf[:n], req, res); err != nil {
-		return errors.Wrapf(err, "ERROR: processMessage from %s", addr.String())
-	}
-	return err
-}
-
-func (s *Server) processMessage(c net.PacketConn, addr net.Addr, msg []byte, req, res *stun.Message) error {
-	if !stun.IsMessage(msg) {
-		return errNonSTUNMessage
-	}
-	// Convert the packet message to STUN message format
-	if _, err := req.Write(msg); err != nil {
-		return errors.Wrap(err, "Failed to read message")
-	}
+func (s *Server) processMessage(c net.PacketConn, addr net.Addr, req, res *stun.Message) error {
 	if err := validateMessage(req, nil, s.cfg.StunPassword); err != nil {
 		return errors.Wrap(err, "Invalid message")
 	}
