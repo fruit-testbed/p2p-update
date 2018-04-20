@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -87,14 +88,18 @@ func (u *Update) MetadataFilename() string {
 
 // Save writes Update metadata to file.
 func (u *Update) Save() error {
-	u.RLock()
-	defer u.RUnlock()
-	filename := u.MetadataFilename()
-	f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
+	f, err := os.OpenFile(u.MetadataFilename(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0640)
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(f).Encode(u)
+	return u.Write(f)
+}
+
+// Write writes this Update instance to Writer 'w'.
+func (u *Update) Write(w io.Writer) error {
+	u.RLock()
+	defer u.RUnlock()
+	return json.NewEncoder(w).Encode(u)
 }
 
 // Verify verifies the update. It returns an error if the verification fails,
