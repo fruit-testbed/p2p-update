@@ -121,32 +121,39 @@ func (s *Server) serveTCP() {
 func (s *Server) serveHTTPRequest(ctx *fasthttp.RequestCtx) {
 	switch {
 	case bytes.Compare(ctx.Method(), strGET) == 0:
-		s.RLock()
-		doJSONWrite(ctx, 200, s.updates)
-		s.RUnlock()
-		return
+		s.serveGetRequest(ctx)
 	case bytes.Compare(ctx.Method(), strPOST) == 0:
-		var (
-			m   Notification
-			err error
-		)
-		if err = json.Unmarshal(ctx.PostBody(), &m); err == nil {
-			if err = m.Verify(s.publicKey); err == nil {
-				s.Lock()
-				if old, ok := s.updates[m.UUID]; !ok || old.Version < m.Version {
-					s.updates[m.UUID] = &m
-					s.lastModified = time.Now()
-				}
-				s.Unlock()
-			}
-		}
-		if err != nil {
-			log.Println(string(ctx.PostBody()))
-			ctx.SetStatusCode(403)
-		}
-		return
+		s.servePostRequest(ctx)
+	default:
+		ctx.SetStatusCode(400)
 	}
-	ctx.SetStatusCode(400)
+}
+
+func (s *Server) serveGetRequest(ctx *fasthttp.RequestCtx) {
+	s.RLock()
+	doJSONWrite(ctx, 200, s.updates)
+	s.RUnlock()
+}
+
+func (s *Server) servePostRequest(ctx *fasthttp.RequestCtx) {
+	var (
+		m   Notification
+		err error
+	)
+	if err = json.Unmarshal(ctx.PostBody(), &m); err == nil {
+		if err = m.Verify(s.publicKey); err == nil {
+			s.Lock()
+			if old, ok := s.updates[m.UUID]; !ok || old.Version < m.Version {
+				s.updates[m.UUID] = &m
+				s.lastModified = time.Now()
+			}
+			s.Unlock()
+		}
+	}
+	if err != nil {
+		log.Println(string(ctx.PostBody()))
+		ctx.SetStatusCode(403)
+	}
 }
 
 func (s *Server) serveUDP() {
