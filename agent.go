@@ -86,6 +86,8 @@ type Config struct {
 	LogFile   string `json:"log-file"`
 	NoUDP     bool   `json:"no-udp"`
 
+	ReadTCPInterval int `json:"read-tcp-interval"`
+
 	// Public key file for verification
 	PublicKey Key `json:"public-key"`
 
@@ -186,6 +188,7 @@ func DefaultConfig() Config {
 			ErrorBackoff:        10,
 			ChannelLifespan:     60,
 		},
+		ReadTCPInterval: 60,
 	}
 }
 
@@ -311,7 +314,7 @@ func (a *Agent) startGossip() {
 		if a.Overlay == nil || !a.Overlay.Ready() {
 			counter++
 			time.Sleep(time.Second)
-			if counter > 300 {
+			if counter > a.Config.ReadTCPInterval {
 				counter = 0
 				a.readTCP()
 			}
