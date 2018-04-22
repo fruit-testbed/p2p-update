@@ -140,22 +140,38 @@ func (s *Server) servePostRequest(ctx *fasthttp.RequestCtx) {
 		n   Notification
 		err error
 	)
-	if err = json.Unmarshal(ctx.PostBody(), &n); err == nil {
-		if err = n.Verify(s.publicKey); err == nil {
-			s.Lock()
-			if old, ok := s.updates[n.UUID]; !ok || old.Version < n.Version {
-				s.updates[n.UUID] = &n
-				s.lastModified = time.Now()
-			}
-			s.Unlock()
+	err = json.Unmarshal(ctx.PostBody(), &n)
+	if err != nil {
+		ctx.SetStatusCode(406)
+		return
+	}
+	err = n.Verify(s.publicKey)
+	if err != nil {
+		ctx.SetStatusCode(400)
+		return
+	}
+
+	s.Lock()
+	defer s.Unlock()
+	if old, ok := s.updates[n.UUID]; ok {
+		if old.Version < n.Version {
+			ctx.SetStatusCode(409)
+			return
+		} else if old.Version == n.Version {
+			ctx.SetStatusCode(201)
+			return
 		}
 	}
-	if err != nil {
-		log.Printf("failed processing POST request - msg: %s - err: %v", string(ctx.PostBody()), err)
-		ctx.SetStatusCode(500)
-	} else {
-		s.sendUpdateNotificationOverUDP(&n)
-	}
+	s.updates[n.UUID] = &n
+	s.lastModified = time.Now()
+	ctx.SetStatusCode(202)
+
+	go func() {
+		for i := 0; i < 5; i++ {
+			s.sendUpdateNotificationOverUDP(&n)
+			time.Sleep(time.Second)
+		}
+	}()
 }
 
 func (s *Server) sendUpdateNotificationOverUDP(n *Notification) {
