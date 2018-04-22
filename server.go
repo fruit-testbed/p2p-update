@@ -154,7 +154,7 @@ func (s *Server) servePostRequest(ctx *fasthttp.RequestCtx) {
 	s.Lock()
 	defer s.Unlock()
 	if old, ok := s.updates[n.UUID]; ok {
-		if old.Version < n.Version {
+		if old.Version > n.Version {
 			ctx.SetStatusCode(409)
 			return
 		} else if old.Version == n.Version {
