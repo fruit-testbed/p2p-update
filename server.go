@@ -164,7 +164,7 @@ func (s *Server) servePostRequest(ctx *fasthttp.RequestCtx) {
 	}
 	s.updates[n.UUID] = &n
 	s.lastModified = time.Now()
-	ctx.SetStatusCode(202)
+	ctx.SetStatusCode(200)
 
 	go func() {
 		for i := 0; i < 5; i++ {
