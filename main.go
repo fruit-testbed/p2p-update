@@ -19,6 +19,7 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
+	"github.com/zeebo/bencode"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -68,6 +69,9 @@ func submitCmd(ctx *cli.Context) error {
 				return err
 			}
 			defer w.Close()
+		}
+		if ctx.Bool("torrent-file") {
+			return bencode.NewEncoder(w).Encode(&u.Notification)
 		}
 		return json.NewEncoder(w).Encode(&u)
 	}
@@ -231,7 +235,7 @@ func main() {
 					Usage: "output notification file, or - for STDOUT",
 				},
 				cli.StringFlag{
-					Name:  "tracker, t",
+					Name:  "tracker, r",
 					Value: DefaultTracker,
 					Usage: "BitTorrent tracker address",
 				},
@@ -249,6 +253,10 @@ func main() {
 					Name:  "server, s",
 					Value: fmt.Sprintf("%s:%d", defaultServerAddr, defaultServerPort),
 					Usage: "Server address",
+				},
+				cli.BoolFlag{
+					Name:  "torrent-file, t",
+					Usage: "Generate BitTorrent file (use with -o option)",
 				},
 			},
 		},
