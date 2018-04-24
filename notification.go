@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -110,7 +111,7 @@ func (mi *Notification) Sign(key *rsa.PrivateKey) error {
 	)
 
 	mi.Signatures = nil
-	if data, err = bencode.EncodeBytes(*mi); err != nil {
+	if data, err = json.Marshal(mi); err != nil {
 		return err
 	}
 	hashed := sha256.Sum256(data)
@@ -136,7 +137,7 @@ func (mi *Notification) Verify(pub *rsa.PublicKey) error {
 	if s, ok := mi.Signatures[signatureName]; ok {
 		sigs := mi.Signatures
 		mi.Signatures = nil
-		if data, err = bencode.EncodeBytes(*mi); err == nil {
+		if data, err = json.Marshal(mi); err == nil {
 			hashed := sha256.Sum256(data)
 			err = rsa.VerifyPKCS1v15(pub, crypto.SHA256, hashed[:], s.Signature)
 		}
