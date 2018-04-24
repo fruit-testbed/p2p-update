@@ -35,3 +35,6 @@ test.sh
 
 # vendor files
 /vendor
+
+# directory contains demo files
+/demo
