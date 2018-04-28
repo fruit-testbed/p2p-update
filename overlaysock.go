@@ -623,13 +623,13 @@ func (overlay *OverlayConn) Close() error {
 	return overlay.automata.Event(eventClose)
 }
 
-// LocalAddr returns local (internal) address of this overlay.
-func (overlay *OverlayConn) LocalAddr() net.Addr {
+// InternalAddr returns the internal address of this overlay.
+func (overlay *OverlayConn) InternalAddr() net.Addr {
 	return overlay.conn.conn.LocalAddr()
 }
 
-// RemoteAddr returns remote (external) address of this overlay
-func (overlay *OverlayConn) RemoteAddr() net.Addr {
+// ExternalAddr returns the external address of this overlay
+func (overlay *OverlayConn) ExternalAddr() net.Addr {
 	if addr, err := net.ResolveUDPAddr("udp", overlay.externalAddr.String()); err == nil {
 		return addr
 	}

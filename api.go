@@ -241,8 +241,8 @@ func (a *API) requestOverlay(ctx *fasthttp.RequestCtx) {
 		}{
 			ID:           a.agent.Overlay.ID.String(),
 			State:        a.agent.Overlay.automata.Current().String(),
-			InternalAddr: a.agent.Overlay.LocalAddr(),
-			ExternalAddr: a.agent.Overlay.RemoteAddr(),
+			InternalAddr: a.agent.Overlay.InternalAddr(),
+			ExternalAddr: a.agent.Overlay.ExternalAddr(),
 		}
 		doJSONWrite(ctx, 200, state)
 	default:
