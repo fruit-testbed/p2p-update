@@ -116,9 +116,9 @@ type OverlayConn struct {
 // punching hole technique to directly communicate to peers behind NATs.
 func NewOverlayConn(cfg OverlayConfig) (*OverlayConn, error) {
 	var (
-		server, local *net.UDPAddr
-		pid           *PeerID
-		err           error
+		serverAddr, localAddr *net.UDPAddr
+		pid                   *PeerID
+		err                   error
 	)
 
 	j, _ := json.Marshal(cfg)
@@ -128,18 +128,18 @@ func NewOverlayConn(cfg OverlayConfig) (*OverlayConn, error) {
 		return nil, errors.Wrap(err, "failed to get local ID")
 	}
 	log.Printf("local peer ID: %s", pid.String())
-	if server, err = net.ResolveUDPAddr("udp", cfg.Server); err != nil {
+	if serverAddr, err = net.ResolveUDPAddr("udp", cfg.Server); err != nil {
 		return nil, fmt.Errorf("Cannot resolve server address: %v", err)
 	}
-	if local, err = net.ResolveUDPAddr("udp", cfg.Address); err != nil {
+	if localAddr, err = net.ResolveUDPAddr("udp", cfg.Address); err != nil {
 		return nil, fmt.Errorf("Cannot resolve local address: %v", err)
 	}
 	overlay := &OverlayConn{
 		ID:             *pid,
 		Reopen:         true,
 		Config:         &cfg,
-		rendezvousAddr: server,
-		localAddr:      local,
+		rendezvousAddr: serverAddr,
+		localAddr:      localAddr,
 		peers:          make(SessionTable),
 		peerDataChan:   make(chan []byte, 16),
 	}
