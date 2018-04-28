@@ -310,6 +310,7 @@ func (a *Agent) startCatchingSignals() {
 
 func (a *Agent) startGossip() {
 	counter := 0
+	a.readTCP()
 	for {
 		if a.Overlay == nil || !a.Overlay.Ready() {
 			counter++
