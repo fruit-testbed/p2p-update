@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -233,13 +234,15 @@ func (a *API) requestOverlay(ctx *fasthttp.RequestCtx) {
 	case bytes.Compare(ctx.Method(), strGET) == 0:
 		ctx.Response.Header.Set("Content-Type", "application/json")
 		state := struct {
-			ID        string `json:"id"`
-			State     string `json:"state"`
-			LocalAddr string `json:"address"`
+			ID           string   `json:"id"`
+			State        string   `json:"state"`
+			InternalAddr net.Addr `json:"internal-address"`
+			ExternalAddr net.Addr `json:"external-address"`
 		}{
-			ID:        a.agent.Overlay.ID.String(),
-			State:     a.agent.Overlay.automata.Current().String(),
-			LocalAddr: a.agent.Overlay.LocalAddr().String(),
+			ID:           a.agent.Overlay.ID.String(),
+			State:        a.agent.Overlay.automata.Current().String(),
+			InternalAddr: a.agent.Overlay.LocalAddr(),
+			ExternalAddr: a.agent.Overlay.RemoteAddr(),
 		}
 		doJSONWrite(ctx, 200, state)
 	default:
