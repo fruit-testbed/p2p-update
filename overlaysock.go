@@ -92,7 +92,8 @@ type OverlayConn struct {
 
 	rendezvousAddr *net.UDPAddr
 	localAddr      *net.UDPAddr
-	externalAddr   stun.XORMappedAddress
+	externalAddr   *net.UDPAddr
+	xorAddr        stun.XORMappedAddress
 
 	automata *Automata
 	conn     *overlayUDPConn
@@ -274,14 +275,15 @@ func (overlay *OverlayConn) binding([]interface{}) {
 		} else if err := validateMessage(e.Message, &stun.BindingSuccess, overlay.Config.StunPassword); err != nil {
 			log.Println("bindingError", errors.Wrap(err, "bindReq received an invalid message:"))
 			overlay.automata.Event(eventError)
-		} else if err = overlay.externalAddr.GetFrom(e.Message); err != nil {
+		} else if err = overlay.xorAddr.GetFrom(e.Message); err != nil {
 			log.Println("failed getting mapped address:", err)
 			overlay.automata.Event(eventError)
 		} else if err = overlay.updateSessionTable(e.Message); err != nil {
 			log.Println("failed updating session table:", err)
 			overlay.automata.Event(eventError)
 		} else {
-			log.Println("XORMappedAddress", overlay.externalAddr)
+			overlay.externalAddr, _ = net.ResolveUDPAddr("udp", overlay.xorAddr.String())
+			log.Println("XORMappedAddress", overlay.xorAddr)
 			log.Println("LocalAddr", overlay.conn.conn.LocalAddr())
 			log.Println("bindingSuccess")
 			overlay.channelExpired = time.Now().Add(overlay.Config.ChannelLifespan * time.Second)
@@ -630,10 +632,7 @@ func (overlay *OverlayConn) InternalAddr() net.Addr {
 
 // ExternalAddr returns the external address of this overlay
 func (overlay *OverlayConn) ExternalAddr() net.Addr {
-	if addr, err := net.ResolveUDPAddr("udp", overlay.externalAddr.String()); err == nil {
-		return addr
-	}
-	return nil
+	return overlay.externalAddr
 }
 
 // SetDeadline sets read and write dealines
