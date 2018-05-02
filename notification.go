@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"time"
 
@@ -161,4 +162,17 @@ func (mi *Notification) torrentMetainfo() (*metainfo.MetaInfo, error) {
 		return nil, fmt.Errorf("failed encoding InfoBytes: %v", err)
 	}
 	return &mm, nil
+}
+
+const minPieceLength = 32768
+
+// PieceLength calculates the length of each file-piece where the size of file
+// is `fileSize` and maximum number of pieces is `maxNumPieces`.
+func PieceLength(fileSize int, maxNumPieces int) int {
+	len := float64(fileSize) / float64(maxNumPieces)
+	if len < minPieceLength {
+		return minPieceLength
+	}
+	p := math.Ceil(math.Log2(len))
+	return int(math.Pow(2, p))
 }
