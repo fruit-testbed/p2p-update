@@ -28,27 +28,40 @@ dep ensure
 This generates an executable binary file: `p2pupdate`.
 
 
-## To run the server
+## To run
 
+The application can run on any Linux operating system.
+
+
+### Server mode
+
+The server mode runs a lightweight STUN service to bootstrap a new peer and advertise
+its session to existing peers. Both the update notification and file are distributed
+using peer-to-peer protocols.
+
+To run in server mode, invoke:
 ```
 ./p2pupdate server
 ```
 
-The server runs a lightweight STUN service to bootstrap a new peer and advertise
-its session to existing peers. Both the update notification and file are distributed
-using peer-to-peer protocols.
 
+## Agent mode
 
-## To run the agent
+The agent mode performs peer-to-peer communications with other agents to send/receive
+update notifications, use it to download/serve the update files, and deploy the updates
+on local node.
 
+To run in agent mode, invoke:
 ```
 ./p2pupdate agent
 ```
 
-Option `--config-file` is used to pass a custom config file.
+There are two options
+- `--config-file`, is used to pass a custom config file.
+- `--default-config`, prints default configuration to standard output.
 
-Option `--default-config` prints default configuration to standard output.
 
 
+## License
 
-License: Apache Version 2.0.
+Apache Version 2.0.
